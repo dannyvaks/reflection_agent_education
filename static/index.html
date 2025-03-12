@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Programming Teaching Assistant</title>
+    <!-- Add Highlight.js library and a theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <!-- Add specific language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/sql.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #2c3e50;
+            color: white;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #ecf0f1;
+            margin: 0;
+        }
+        header p {
+            margin: 10px 0 0;
+            color: #bdc3c7;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .upload-section {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .results-section {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .file-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .language-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .language-selector select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+            min-width: 150px;
+        }
+        #fileInput {
+            background-color: #f1f3f5;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px dashed #ced4da;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            font-weight: 600;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .language-detected {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #e8f7f0;
+            border-radius: 5px;
+            border-left: 4px solid #2ecc71;
+        }
+        .summary, .code-examples, .practice-exercises, .assessment-questions {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .code-examples, .practice-exercises {
+            border-left: 4px solid #3498db;
+        }
+        .assessment-questions {
+            border-left: 4px solid #9b59b6;
+        }
+        .question-card {
+            background-color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .question-card h4 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .answer {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f1f8fe;
+            border-left: 4px solid #3498db;
+            border-radius: 0 5px 5px 0;
+        }
+        pre {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            line-height: 1.4;
+            margin: 15px 0;
+        }
+        code {
+            font-family: 'Courier New', monospace;
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+            color: #e74c3c;
+        }
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: inherit;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+        h3 {
+            color: #3498db;
+            margin-top: 30px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        .loading {
+            text-align: center;
+            margin: 30px 0;
+            padding: 30px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .spinner {
+            border: 6px solid rgba(0, 0, 0, 0.1);
+            border-left: 6px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            color: #e74c3c;
+            padding: 15px;
+            background-color: #fadbd8;
+            border-radius: 5px;
+            margin-top: 15px;
+            border-left: 4px solid #c0392b;
+            display: none;
+        }
+
+        /* Styling for lists */
+        ul, ol {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        /* Styling for markdown content */
+        .markdown-content p {
+            margin-bottom: 16px;
+        }
+
+        .markdown-content h4 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            color: #2c3e50;
+        }
+
+        /* Styling for note boxes */
+        .note {
+            background-color: #f8f4e5;
+            padding: 12px;
+            border-left: 4px solid #f4d03f;
+            margin-bottom: 16px;
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* For print layout */
+        @media print {
+            body {
+                font-size: 12pt;
+                color: #000;
+                background-color: #fff;
+            }
+
+            .upload-section, button {
+                display: none;
+            }
+
+            .results-section {
+                display: block !important;
+                box-shadow: none;
+            }
+
+            pre {
+                border: 1px solid #ddd;
+                white-space: pre-wrap;
+                color: #000;
+                background-color: #f9f9f9;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>AI Programming Teaching Assistant</h1>
+        <p>Upload programming lecture PDFs to generate code examples, exercises, and assessment questions</p>
+    </header>
+
+    <div class="container">
+        <div class="upload-section">
+            <h2>Upload Programming Lecture PDF</h2>
+            <p>Select a PDF file containing programming lecture notes or content.</p>
+            <div class="file-controls">
+                <input type="file" id="fileInput" accept=".pdf" />
+                <div class="language-selector">
+                    <label for="languageSelect">Programming Language (Optional):</label>
+                    <select id="languageSelect">
+                        <option value="">Auto-detect</option>
+                        <option value="python">Python</option>
+                        <option value="sql">SQL</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="java">Java</option>
+                        <option value="cpp">C++</option>
+                        <option value="csharp">C#</option>
+                        <option value="php">PHP</option>
+                        <option value="ruby">Ruby</option>
+                        <option value="go">Go</option>
+                        <option value="swift">Swift</option>
+                    </select>
+                </div>
+            </div>
+            <button id="processBtn">Process Lecture</button>
+            <div class="error" id="errorMessage"></div>
+        </div>
+
+        <div class="loading" id="loadingIndicator">
+            <div class="spinner"></div>
+            <p>Processing your lecture... This may take a few minutes.</p>
+        </div>
+
+        <div class="results-section" id="resultsSection">
+            <h2>Programming Lecture Analysis</h2>
+
+            <div class="language-detected">
+                <h3>Language Detected</h3>
+                <div id="languageContent"></div>
+            </div>
+
+            <div class="summary">
+                <h3>Concept Summary</h3>
+                <div id="summaryContent" class="markdown-content"></div>
+            </div>
+
+            <div class="code-examples">
+                <h3>Code Examples</h3>
+                <div id="codeExamplesContent" class="markdown-content"></div>
+            </div>
+
+            <div class="practice-exercises">
+                <h3>Practice Exercises</h3>
+                <div id="practiceExercisesContent" class="markdown-content"></div>
+            </div>
+
+            <div class="assessment-questions">
+                <h3>Assessment Questions</h3>
+                <div id="questionsContainer"></div>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px; color: #7f8c8d;">
+                <p>Generated by AI Programming Teaching Assistant</p>
+                <button id="printBtn" style="margin-top: 10px;">Print or Save as PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('fileInput');
+            const processBtn = document.getElementById('processBtn');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const resultsSection = document.getElementById('resultsSection');
+            const languageContent = document.getElementById('languageContent');
+            const summaryContent = document.getElementById('summaryContent');
+            const codeExamplesContent = document.getElementById('codeExamplesContent');
+            const practiceExercisesContent = document.getElementById('practiceExercisesContent');
+            const questionsContainer = document.getElementById('questionsContainer');
+            const errorMessage = document.getElementById('errorMessage');
+            const printBtn = document.getElementById('printBtn');
+
+            // Print functionality
+            printBtn.addEventListener('click', function() {
+                window.print();
+            });
+
+            // API endpoint
+            const API_URL = 'http://localhost:8000/process-lecture/';
+
+            processBtn.addEventListener('click', async function() {
+                // Validate file selection
+                if (!fileInput.files.length) {
+                    showError('Please select a PDF file first.');
+                    return;
+                }
+
+                const file = fileInput.files[0];
+
+                // Validate file type
+                if (!file.name.endsWith('.pdf')) {
+                    showError('Only PDF files are supported.');
+                    return;
+                }
+
+                // Show loading indicator
+                loadingIndicator.style.display = 'block';
+                resultsSection.style.display = 'none';
+                errorMessage.style.display = 'none';
+                processBtn.disabled = true;
+
+                // Get selected language
+                const languageSelect = document.getElementById('languageSelect');
+                const selectedLanguage = languageSelect.value;
+
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('file', file);
+                if (selectedLanguage) {
+                    formData.append('language', selectedLanguage);
+                }
+
+                try {
+                    // Send API request
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to process lecture.');
+                    }
+
+                    const data = await response.json();
+
+                    // Display results
+                    displayResults(data);
+
+                    // Hide loading indicator and show results
+                    loadingIndicator.style.display = 'none';
+                    resultsSection.style.display = 'block';
+
+                    // Scroll to results
+                    resultsSection.scrollIntoView({ behavior: 'smooth' });
+
+                } catch (error) {
+                    console.error('Error:', error);
+                    loadingIndicator.style.display = 'none';
+                    showError(error.message || 'An error occurred while processing the lecture.');
+
+                } finally {
+                    processBtn.disabled = false;
+                }
+            });
+
+            function displayResults(data) {
+                // Display detected language
+                languageContent.innerHTML = `<p>The lecture appears to be about <strong>${data.language.toUpperCase()}</strong> programming.</p>`;
+
+                if (data.note) {
+                    const noteDiv = document.createElement('div');
+                    noteDiv.className = 'note';
+                    noteDiv.innerHTML = `<p><em>${data.note}</em></p>`;
+                    languageContent.appendChild(noteDiv);
+                }
+
+                // Display summary
+                summaryContent.innerHTML = formatMarkdownContent(data.summary);
+
+                // Display code examples with syntax highlighting
+                codeExamplesContent.innerHTML = formatMarkdownContent(data.code_examples);
+
+                // Display practice exercises with syntax highlighting
+                practiceExercisesContent.innerHTML = formatMarkdownContent(data.practice_exercises);
+
+                // Display questions
+                questionsContainer.innerHTML = '';
+                const questions = data.assessment.questions;
+                const answers = data.assessment.answers;
+
+                for (let i = 0; i < questions.length; i++) {
+                    const questionCard = document.createElement('div');
+                    questionCard.className = 'question-card';
+
+                    const questionNumber = document.createElement('h4');
+                    questionNumber.textContent = `Question ${i + 1}`;
+
+                    const questionText = document.createElement('div');
+                    questionText.innerHTML = formatMarkdownContent(questions[i]);
+
+                    const answer = document.createElement('div');
+                    answer.className = 'answer';
+                    answer.innerHTML = `<p><strong>Answer:</strong></p>${formatMarkdownContent(answers[i])}`;
+
+                    questionCard.appendChild(questionNumber);
+                    questionCard.appendChild(questionText);
+                    questionCard.appendChild(answer);
+
+                    questionsContainer.appendChild(questionCard);
+                }
+
+                // Apply Highlight.js to all code blocks
+                document.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightBlock(block);
+                });
+            }
+
+            function formatMarkdownContent(content) {
+                if (!content) return "";
+
+                // Step 1: Deep clean all class artifacts and HTML tags
+                let cleaned = content;
+
+                // Remove all class attributes
+                cleaned = cleaned.replace(/class=["'][^"']*["']/g, '');
+                cleaned = cleaned.replace(/class=class=["'][^"']*["']/g, '');
+
+                // Remove color styles
+                cleaned = cleaned.replace(/color:\s*#[0-9a-fA-F]+;/g, '');
+                cleaned = cleaned.replace(/color:\s*#[0-9a-fA-F]+/g, '');
+                cleaned = cleaned.replace(/color:[^;]*/g, '');
+
+                // Remove specific patterns we've seen in the output
+                cleaned = cleaned.replace(/fclass=/g, 'f');
+                cleaned = cleaned.replace(/print\(class=/g, 'print(');
+                cleaned = cleaned.replace(/print\(fclass=/g, 'print(f');
+
+                // Step 2: Convert markdown to HTML
+                // Replace markdown code blocks with HTML
+                let formatted = cleaned.replace(/```(\w+)?\n([\s\S]*?)```/g, function(match, language, code) {
+                    const lang = language || '';
+                    return `<pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre>`;
+                });
+
+                // Replace inline code
+                formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+                // Convert markdown headings
+                formatted = formatted.replace(/^### (.*$)/gm, '<h4>$1</h4>');
+                formatted = formatted.replace(/^## (.*$)/gm, '<h3>$1</h3>');
+                formatted = formatted.replace(/^# (.*$)/gm, '<h2>$1</h2>');
+
+                // Convert markdown lists
+                formatted = formatted.replace(/^\* (.*$)/gm, '<li>$1</li>');
+                formatted = formatted.replace(/^- (.*$)/gm, '<li>$1</li>');
+                formatted = formatted.replace(/^(\d+)\. (.*$)/gm, '<li>$2</li>');
+
+                // Wrap lists in ul/ol tags
+                let inList = false;
+                let listLines = [];
+                let paragraphs = [];
+
+                formatted.split('\n').forEach(line => {
+                    if (line.trim().startsWith('<li>')) {
+                        if (!inList) {
+                            inList = true;
+                            listLines.push('<ul>');
+                        }
+                        listLines.push(line);
+                    } else {
+                        if (inList) {
+                            inList = false;
+                            listLines.push('</ul>');
+                            paragraphs.push(listLines.join(''));
+                            listLines = [];
+                        }
+                        paragraphs.push(line);
+                    }
+                });
+
+                if (inList) {
+                    listLines.push('</ul>');
+                    paragraphs.push(listLines.join(''));
+                }
+
+                formatted = paragraphs.join('\n');
+
+                // Convert double line breaks to paragraph tags
+                formatted = formatted.replace(/\n\n+/g, '</p><p>');
+
+                // Ensure the content starts and ends with paragraph tags if needed
+                if (!formatted.startsWith('<h') && !formatted.startsWith('<ul') && !formatted.startsWith('<p>')) {
+                    formatted = '<p>' + formatted;
+                }
+                if (!formatted.endsWith('</p>') && !formatted.endsWith('</ul>') && !formatted.endsWith('</h2>') && !formatted.endsWith('</h3>') && !formatted.endsWith('</h4>')) {
+                    formatted = formatted + '</p>';
+                }
+
+                return formatted;
+            }
+
+            // Escape HTML special characters
+            function escapeHtml(text) {
+                return text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+                errorMessage.scrollIntoView({ behavior: 'smooth' });
+            }
+
+            // Initialize Highlight.js
+            hljs.configure({
+                languages: ['python', 'javascript', 'sql'],
+                tabReplace: '    '
+            });
+        });
+    </script>
+</body>
+</html>
