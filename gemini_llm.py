@@ -26,10 +26,35 @@ class GenaiLLM:
         """Initialize the Gemini model."""
         self.model_name = model_name
         self.temperature = temperature
-        # Initialize the model
+        # Initialize the model with additional configuration to prevent citations
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
-            generation_config={"temperature": self.temperature}
+            generation_config={
+                "temperature": self.temperature,
+                "top_p": 0.95,
+                "top_k": 40,
+                # These settings help prevent recitation issues
+                "response_mime_type": "text/plain",
+            },
+            # Configure safety settings
+            safety_settings=[
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    "category": "HARM_CATEGORY_HATE_SPEECH",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                }
+            ]
         )
 
     def invoke(self, messages: List[BaseMessage]) -> AIMessage:
@@ -42,74 +67,111 @@ class GenaiLLM:
         Returns:
             AIMessage: The model's response as an AIMessage.
         """
-        # Convert LangChain messages to Gemini's format
+        # Process system messages separately
+        system_messages = [msg for msg in messages if isinstance(msg, SystemMessage)]
+        non_system_messages = [msg for msg in messages if not isinstance(msg, SystemMessage)]
+
+        # Combine system messages into a single prompt if present
+        system_content = ""
+        if system_messages:
+            system_content = "\n\n".join([msg.content for msg in system_messages])
+            system_content += "\n\nIMPORTANT: Do not use citations or quote sources directly. Present information as your own expertise."
+
+        # Convert remaining messages to Gemini's format
         gemini_messages = []
 
-        for message in messages:
-            if isinstance(message, SystemMessage):
-                # Gemini doesn't have a system role, so we'll add it as a user message
+        for i, message in enumerate(non_system_messages):
+            if isinstance(message, HumanMessage):
+                content = message.content
+                # For the first human message, prepend system content if any
+                if i == 0 and system_content:
+                    content = f"{system_content}\n\n{content}"
                 gemini_messages.append({
                     "role": "user",
-                    "parts": [{"text": f"System instruction: {message.content}"}]
-                })
-            elif isinstance(message, HumanMessage):
-                gemini_messages.append({
-                    "role": "user",
-                    "parts": [{"text": message.content}]
+                    "parts": [content]
                 })
             elif isinstance(message, AIMessage):
                 gemini_messages.append({
                     "role": "model",
-                    "parts": [{"text": message.content}]
+                    "parts": [message.content]
                 })
 
-        # If there's only one message and it's from the user, use generate_content directly
-        if len(gemini_messages) == 1 and gemini_messages[0]["role"] == "user":
+        # Handle the case where we might just have system messages
+        if not gemini_messages and system_content:
+            gemini_messages.append({
+                "role": "user",
+                "parts": [system_content]
+            })
+
+        # If there are no messages after processing, handle error
+        if not gemini_messages:
+            return AIMessage(content="No valid messages were provided.")
+
+        # Try using the chat API first for multi-turn conversations
+        if len(gemini_messages) > 1:
             try:
-                response = self.model.generate_content(gemini_messages[0]["parts"][0]["text"])
-                return AIMessage(content=response.text)
-            except Exception as e:
-                print(f"Error in direct generation: {e}")
-                # If the input is too short, add some context
-                try:
-                    response = self.model.generate_content(
-                        "Please respond to the following request: " + gemini_messages[0]["parts"][0]["text"]
-                    )
+                chat = self.model.start_chat(history=[])
+
+                # Add each message to the chat
+                response = None
+                for msg in gemini_messages:
+                    if msg["role"] == "user":
+                        response = chat.send_message(msg["parts"][0])
+
+                # Return the last response
+                if response and hasattr(response, 'text') and response.text:
                     return AIMessage(content=response.text)
-                except Exception as e2:
-                    print(f"Error in fallback generation: {e2}")
-                    return AIMessage(content="I was unable to process that request.")
+                else:
+                    raise Exception("No valid response from chat API")
 
-        # For multi-turn conversations, use chat
+            except Exception as e:
+                print(f"Error in chat generation: {e}")
+                # Fall through to the generate_content approach
+
+        # For single messages or if chat API failed, use generate_content with
+        # anti-citation instructions
         try:
-            chat = self.model.start_chat(history=[])
+            # Prepare the input with an anti-citation instruction
+            if gemini_messages[-1]["role"] == "user":
+                content = gemini_messages[-1]["parts"][0]
+                content = f"{content}\n\nPlease provide an original response without citations or direct quotes."
 
-            # Add each message to the chat
-            response = None
-            for msg in gemini_messages:
-                if msg["role"] == "user":
-                    response = chat.send_message(msg["parts"][0]["text"])
-                # We don't need to send model messages as they're just for context
-
-            # Return the last response
-            if response:
-                return AIMessage(content=response.text)
+                response = self.model.generate_content(content)
+                if hasattr(response, 'text') and response.text:
+                    return AIMessage(content=response.text)
+                else:
+                    raise Exception("Empty response from generate_content")
             else:
-                # If we somehow didn't get a response, create one
-                response = self.model.generate_content("Please provide a helpful response.")
-                return AIMessage(content=response.text)
+                # If the last message is not from user, use the last user message
+                for msg in reversed(gemini_messages):
+                    if msg["role"] == "user":
+                        content = msg["parts"][0]
+                        content = f"{content}\n\nPlease provide an original response without citations or direct quotes."
 
-        except Exception as e:
-            print(f"Error in chat generation: {e}")
-            # Fallback to simple generation with the last user message
-            for msg in reversed(gemini_messages):
-                if msg["role"] == "user":
-                    try:
-                        response = self.model.generate_content(
-                            "Please respond to: " + msg["parts"][0]["text"]
-                        )
-                        return AIMessage(content=response.text)
-                    except:
+                        response = self.model.generate_content(content)
+                        if hasattr(response, 'text') and response.text:
+                            return AIMessage(content=response.text)
                         break
 
-            return AIMessage(content="I was unable to process that conversation.")
+                # If we couldn't find a user message
+                raise Exception("No valid user message found")
+
+        except Exception as e:
+            print(f"Error in generate_content: {e}")
+
+            # Try one more approach with simplified content
+            try:
+                # Create a very simplified request
+                simple_content = "Please respond to this programming education request with original content, no citations."
+                if gemini_messages[-1]["role"] == "user":
+                    simple_content += f" Request: {gemini_messages[-1]['parts'][0][:500]}"
+
+                response = self.model.generate_content(simple_content)
+                if hasattr(response, 'text') and response.text:
+                    return AIMessage(content=response.text)
+            except Exception as e2:
+                print(f"Error in simplified generation: {e2}")
+
+            # Final fallback
+            return AIMessage(
+                content="I apologize, but I was unable to process that request. Please try again with clearer instructions about the programming concepts you'd like me to explain.")

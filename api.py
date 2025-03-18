@@ -12,15 +12,16 @@ from dotenv import load_dotenv
 # Load environment variables from .env file (for Google API key)
 load_dotenv()
 
-# Import our TeachingAgent
-from teaching_agent import TeachingAgent
+# Import our ReflexionTeachingAgent (renamed from TeachingAgent)
+from reflexion_teaching_agent import ReflexionTeachingAgent
 
 # Check if Google API key is set
 if not os.environ.get("GOOGLE_API_KEY"):
     print("WARNING: GOOGLE_API_KEY environment variable is not set.")
-    print("Make sure to set it before initializing the TeachingAgent.")
+    print("Make sure to set it before initializing the ReflexionTeachingAgent.")
 
-app = FastAPI(title="AI Teaching Assistant API")
+app = FastAPI(title="AI Teaching Assistant API",
+              description="API for processing programming lecture PDFs using the Reflexion framework with ReAct and Chain-of-Thought techniques")
 
 # Add CORS middleware to allow requests from frontend
 app.add_middleware(
@@ -37,9 +38,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Initialize our teaching agent
 # Will use the GOOGLE_API_KEY environment variable
 try:
-    agent = TeachingAgent()
+    agent = ReflexionTeachingAgent()
 except ValueError as e:
-    print(f"Error initializing TeachingAgent: {e}")
+    print(f"Error initializing ReflexionTeachingAgent: {e}")
     print("The API will start, but endpoints requiring the agent will fail.")
     agent = None
 
@@ -48,6 +49,9 @@ except ValueError as e:
 async def process_lecture(file: UploadFile = File(...), language: str = None):
     """
     Process a programming lecture PDF and return comprehensive teaching materials.
+
+    The processing uses the Reflexion framework with ReAct and Chain-of-Thought techniques
+    to generate high-quality educational content.
 
     Args:
         file: Uploaded PDF file
@@ -60,7 +64,7 @@ async def process_lecture(file: UploadFile = File(...), language: str = None):
     if agent is None:
         raise HTTPException(
             status_code=500,
-            detail="Teaching Agent not initialized. Check if GOOGLE_API_KEY is properly set."
+            detail="ReflexionTeachingAgent not initialized. Check if GOOGLE_API_KEY is properly set."
         )
 
     # Validate file type
@@ -91,7 +95,7 @@ async def process_lecture(file: UploadFile = File(...), language: str = None):
 
 @app.get("/health/")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint to verify the API and agent are functioning."""
     return {"status": "healthy", "agent_initialized": agent is not None}
 
 
@@ -104,4 +108,4 @@ async def redirect_to_frontend():
 
 if __name__ == "__main__":
     # Start the FastAPI server
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)

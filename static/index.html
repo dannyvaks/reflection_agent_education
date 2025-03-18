@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Programming Teaching Assistant</title>
+    <title>AI Programming Teaching Assistant (Reflexion)</title>
     <!-- Add Highlight.js library and a theme -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
@@ -231,6 +231,66 @@
             border-radius: 0 4px 4px 0;
         }
 
+        /* Styling for Thought and Action sections */
+        .thought {
+            background-color: #e8f4f8;
+            padding: 12px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 16px;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .action {
+            background-color: #eafaf1;
+            padding: 12px;
+            border-left: 4px solid #2ecc71;
+            margin-bottom: 16px;
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* Toggle View Styles */
+        .view-toggle {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .toggle-button {
+            background-color: #f1f3f5;
+            border: 1px solid #ced4da;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .toggle-button.active {
+            background-color: #3498db;
+            color: white;
+            border-color: #2980b9;
+        }
+
+        .toggle-button:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+
+        .toggle-button:last-child {
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* Content toggle */
+        .content-process {
+            display: none;
+        }
+
+        .show-process .content-result {
+            display: none;
+        }
+
+        .show-process .content-process {
+            display: block;
+        }
+
         /* For print layout */
         @media print {
             body {
@@ -239,7 +299,7 @@
                 background-color: #fff;
             }
 
-            .upload-section, button {
+            .upload-section, button, .view-toggle {
                 display: none;
             }
 
@@ -254,13 +314,26 @@
                 color: #000;
                 background-color: #f9f9f9;
             }
+
+            /* When printing, only show the current view */
+            .content-process, .content-result {
+                display: none;
+            }
+
+            .show-process .content-process {
+                display: block !important;
+            }
+
+            .show-result .content-result {
+                display: block !important;
+            }
         }
     </style>
 </head>
 <body>
     <header>
-        <h1>AI Programming Teaching Assistant</h1>
-        <p>Upload programming lecture PDFs to generate code examples, exercises, and assessment questions</p>
+        <h1>AI Programming Teaching Assistant (Reflexion)</h1>
+        <p>Upload programming lecture PDFs to generate code examples, exercises, and assessment questions using Reflexion with ReAct and Chain-of-Thought techniques</p>
     </header>
 
     <div class="container">
@@ -292,11 +365,17 @@
 
         <div class="loading" id="loadingIndicator">
             <div class="spinner"></div>
-            <p>Processing your lecture... This may take a few minutes.</p>
+            <p>Processing your lecture using Reflexion techniques... This may take a few minutes.</p>
         </div>
 
         <div class="results-section" id="resultsSection">
             <h2>Programming Lecture Analysis</h2>
+
+            <!-- View Toggle Buttons -->
+            <div class="view-toggle">
+                <button class="toggle-button active" data-view="result">Final Result</button>
+                <button class="toggle-button" data-view="process">Learning Process</button>
+            </div>
 
             <div class="language-detected">
                 <h3>Language Detected</h3>
@@ -310,12 +389,14 @@
 
             <div class="code-examples">
                 <h3>Code Examples</h3>
-                <div id="codeExamplesContent" class="markdown-content"></div>
+                <div id="codeExamplesContent" class="markdown-content content-result"></div>
+                <div id="codeExamplesProcessContent" class="markdown-content content-process"></div>
             </div>
 
             <div class="practice-exercises">
                 <h3>Practice Exercises</h3>
-                <div id="practiceExercisesContent" class="markdown-content"></div>
+                <div id="practiceExercisesContent" class="markdown-content content-result"></div>
+                <div id="practiceExercisesProcessContent" class="markdown-content content-process"></div>
             </div>
 
             <div class="assessment-questions">
@@ -324,7 +405,7 @@
             </div>
 
             <div style="text-align: center; margin-top: 30px; color: #7f8c8d;">
-                <p>Generated by AI Programming Teaching Assistant</p>
+                <p>Generated by AI Programming Teaching Assistant with Reflexion</p>
                 <button id="printBtn" style="margin-top: 10px;">Print or Save as PDF</button>
             </div>
         </div>
@@ -339,10 +420,38 @@
             const languageContent = document.getElementById('languageContent');
             const summaryContent = document.getElementById('summaryContent');
             const codeExamplesContent = document.getElementById('codeExamplesContent');
+            const codeExamplesProcessContent = document.getElementById('codeExamplesProcessContent');
             const practiceExercisesContent = document.getElementById('practiceExercisesContent');
+            const practiceExercisesProcessContent = document.getElementById('practiceExercisesProcessContent');
             const questionsContainer = document.getElementById('questionsContainer');
             const errorMessage = document.getElementById('errorMessage');
             const printBtn = document.getElementById('printBtn');
+
+            // Setup view toggle functionality
+            const toggleButtons = document.querySelectorAll('.toggle-button');
+            const resultsContainer = document.querySelector('.results-section');
+
+            toggleButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Update active button
+                    toggleButtons.forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Toggle content view
+                    if (this.dataset.view === 'process') {
+                        resultsContainer.classList.add('show-process');
+                        resultsContainer.classList.remove('show-result');
+                    } else {
+                        resultsContainer.classList.remove('show-process');
+                        resultsContainer.classList.add('show-result');
+                    }
+
+                    // Re-apply syntax highlighting
+                    document.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightBlock(block);
+                    });
+                });
+            });
 
             // Print functionality
             printBtn.addEventListener('click', function() {
@@ -432,11 +541,13 @@
                 // Display summary
                 summaryContent.innerHTML = formatMarkdownContent(data.summary);
 
-                // Display code examples with syntax highlighting
-                codeExamplesContent.innerHTML = formatMarkdownContent(data.code_examples);
+                // Display code examples with syntax highlighting - both versions
+                codeExamplesContent.innerHTML = formatMarkdownContent(data.code_examples_clean || data.code_examples);
+                codeExamplesProcessContent.innerHTML = formatMarkdownContent(data.code_examples);
 
-                // Display practice exercises with syntax highlighting
-                practiceExercisesContent.innerHTML = formatMarkdownContent(data.practice_exercises);
+                // Display practice exercises with syntax highlighting - both versions
+                practiceExercisesContent.innerHTML = formatMarkdownContent(data.practice_exercises_clean || data.practice_exercises);
+                practiceExercisesProcessContent.innerHTML = formatMarkdownContent(data.practice_exercises);
 
                 // Display questions
                 questionsContainer.innerHTML = '';
@@ -490,9 +601,48 @@
                 cleaned = cleaned.replace(/print\(class=/g, 'print(');
                 cleaned = cleaned.replace(/print\(fclass=/g, 'print(f');
 
-                // Step 2: Convert markdown to HTML
+                // Step 2: Extract ReAct pattern sections (Thought: and Action:) BEFORE processing code blocks
+                // This ensures they don't get caught inside code blocks
+                let extractedThoughts = [];
+                let extractedActions = [];
+                let thoughtCounter = 0;
+                let actionCounter = 0;
+
+                // Extract Thought sections and replace with placeholders
+                cleaned = cleaned.replace(/<div class="thought"><strong>Thought:<\/strong>(.*?)<\/div>/gs, function(match, thought) {
+                    let placeholder = `THOUGHT_PLACEHOLDER_${thoughtCounter}`;
+                    extractedThoughts.push({placeholder, content: thought});
+                    thoughtCounter++;
+                    return placeholder;
+                });
+
+                // Also catch plain text "Thought:" markers
+                cleaned = cleaned.replace(/Thought:(.*?)(?=Action:|```|$)/gs, function(match, thought) {
+                    let placeholder = `THOUGHT_PLACEHOLDER_${thoughtCounter}`;
+                    extractedThoughts.push({placeholder, content: thought});
+                    thoughtCounter++;
+                    return placeholder;
+                });
+
+                // Extract Action sections and replace with placeholders
+                cleaned = cleaned.replace(/<div class="action"><strong>Action:<\/strong>(.*?)<\/div>/gs, function(match, action) {
+                    let placeholder = `ACTION_PLACEHOLDER_${actionCounter}`;
+                    extractedActions.push({placeholder, content: action});
+                    actionCounter++;
+                    return placeholder;
+                });
+
+                // Also catch plain text "Action:" markers
+                cleaned = cleaned.replace(/Action:(.*?)(?=Thought:|```|$)/gs, function(match, action) {
+                    let placeholder = `ACTION_PLACEHOLDER_${actionCounter}`;
+                    extractedActions.push({placeholder, content: action});
+                    actionCounter++;
+                    return placeholder;
+                });
+
+                // Step 3: Convert markdown to HTML
                 // Replace markdown code blocks with HTML
-                let formatted = cleaned.replace(/```(\w+)?\n([\s\S]*?)```/g, function(match, language, code) {
+                formatted = cleaned.replace(/```(\w+)?\n([\s\S]*?)```/g, function(match, language, code) {
                     const lang = language || '';
                     return `<pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre>`;
                 });
@@ -543,11 +693,24 @@
                 // Convert double line breaks to paragraph tags
                 formatted = formatted.replace(/\n\n+/g, '</p><p>');
 
+                // Step 4: Reinsert Thought and Action sections with proper formatting
+                // Replace thought placeholders with properly formatted divs
+                extractedThoughts.forEach(item => {
+                    formatted = formatted.replace(item.placeholder,
+                        `<div class="thought"><strong>Thought:</strong>${item.content}</div>`);
+                });
+
+                // Replace action placeholders with properly formatted divs
+                extractedActions.forEach(item => {
+                    formatted = formatted.replace(item.placeholder,
+                        `<div class="action"><strong>Action:</strong>${item.content}</div>`);
+                });
+
                 // Ensure the content starts and ends with paragraph tags if needed
-                if (!formatted.startsWith('<h') && !formatted.startsWith('<ul') && !formatted.startsWith('<p>')) {
+                if (!formatted.startsWith('<h') && !formatted.startsWith('<ul') && !formatted.startsWith('<p>') && !formatted.startsWith('<div class="thought">') && !formatted.startsWith('<div class="action">')) {
                     formatted = '<p>' + formatted;
                 }
-                if (!formatted.endsWith('</p>') && !formatted.endsWith('</ul>') && !formatted.endsWith('</h2>') && !formatted.endsWith('</h3>') && !formatted.endsWith('</h4>')) {
+                if (!formatted.endsWith('</p>') && !formatted.endsWith('</ul>') && !formatted.endsWith('</h2>') && !formatted.endsWith('</h3>') && !formatted.endsWith('</h4>') && !formatted.endsWith('</div>')) {
                     formatted = formatted + '</p>';
                 }
 

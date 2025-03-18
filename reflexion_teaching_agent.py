@@ -1,9 +1,5 @@
 import os
 from typing import List, Dict, Any, Tuple
-import base64
-from pathlib import Path
-
-# PDF processing libraries
 import PyPDF2
 import fitz  # PyMuPDF
 
@@ -15,12 +11,11 @@ from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from gemini_llm import GenaiLLM
 
 
-class TeachingAgent:
+class ReflexionTeachingAgent:
     """
-    AI Teaching Agent specialized for programming education (Python, SQL, etc.).
-    Processes lecture PDFs and creates coding-focused learning materials with reflection.
-    Uses a reflection mechanism to improve the quality of generated content and ensure
-    programming best practices are followed.
+    AI Teaching Agent specialized for programming education using Reflexion framework.
+    Incorporates ReAct (Reasoning + Acting) and Chain-of-Thought (CoT) techniques
+    to enhance educational content generation with structured reasoning.
     """
 
     def __init__(self, model_name="gemini-2.0-flash", temperature=0.2, google_api_key=None):
@@ -40,11 +35,11 @@ class TeachingAgent:
             temperature=temperature
         )
 
-        # Create the reflection graph
-        self.graph = self._build_reflection_graph()
+        # Create the reflexion graph
+        self.graph = self._build_reflexion_graph()
 
-    def _build_reflection_graph(self) -> MessageGraph:
-        """Build the reflection graph using LangGraph."""
+    def _build_reflexion_graph(self) -> MessageGraph:
+        """Build the reflexion graph using LangGraph."""
         builder = MessageGraph()
 
         # Add nodes for generate and reflect
@@ -61,28 +56,62 @@ class TeachingAgent:
         return builder.compile()
 
     def _should_continue(self, state: List[BaseMessage]):
-        """Determine if we should continue the reflection loop."""
+        """Determine if we should continue the reflexion loop."""
         # Limit to 2 reflection cycles (4 messages: 2 generations + 2 reflections)
-        # Reduced from 3 cycles to minimize API calls
         if len(state) > 4:
             return END
         return "reflect"
 
     def _generation_node(self, state: List[BaseMessage]) -> List[BaseMessage]:
-        """Generate content based on the current state."""
+        """Generate content based on the current state using ReAct or CoT approaches."""
         # If this is the first generation, start with the initial request
         if len(state) == 1:
             # Extract the task from the first message
             task = state[0].content
 
-            # Generate the initial response with programming education focus
+            # Generate the initial response with programming education focus using ReAct prompting
             try:
                 response = self.llm.invoke([
                     SystemMessage(content="""You are an expert programming educator specializing in teaching 
                     languages like Python, SQL, JavaScript, and other programming concepts. 
-                    Your goal is to create clear, executable code examples and practical explanations that follow
-                    programming best practices. Focus on helping learners understand both the syntax and the underlying
-                    concepts. Include practical, real-world applications wherever possible."""),
+
+                    Follow the ReAct approach:
+                    1. First THINK by analyzing the problem and breaking it down into steps
+                    2. Then ACT by creating clear code examples following best practices
+
+                    IMPORTANT FORMATTING INSTRUCTIONS:
+                    - Put "Thought:" sections OUTSIDE of code blocks
+                    - Put "Action:" sections OUTSIDE of code blocks
+                    - Always place code examples in proper markdown code blocks with language specified
+                    - Never mix "Thought:" or "Action:" markers inside code blocks
+
+                    For example:
+
+                    Thought: I'll demonstrate list operations in Python.
+
+                    Action: Here's a code example for list creation and indexing:
+
+                    ```python
+                    # Create a list
+                    my_list = [10, 20, 30, 40, 50]
+
+                    # Access elements
+                    print(my_list[0])  # Output: 10
+                    ```
+
+                    Thought: Now I'll explain list slicing.
+
+                    Action: Here's a code example for list slicing:
+
+                    ```python
+                    # List slicing
+                    my_list = [10, 20, 30, 40, 50]
+                    print(my_list[1:4])  # Output: [20, 30, 40]
+                    ```
+
+                    Include Chain-of-Thought reasoning to make your explanations step-by-step and clear.
+                    Focus on helping learners understand both the syntax and the underlying concepts.
+                    Include practical, real-world applications wherever possible."""),
                     HumanMessage(content=task)
                 ])
             except Exception as e:
@@ -91,46 +120,53 @@ class TeachingAgent:
                 response = AIMessage(
                     content="I couldn't generate a proper response. The input might be too short or unclear.")
         else:
-            # Use reflection feedback for improved generation
+            # Use reflexion feedback for improved generation
             messages = state.copy()
             try:
                 response = self.llm.invoke(messages)
             except Exception as e:
                 print(f"Error in subsequent generation: {e}")
                 # Provide a fallback response
-                response = AIMessage(content="I couldn't generate an improved response based on the reflection.")
+                response = AIMessage(content="I couldn't generate an improved response based on the reflexion.")
 
         # Return updated state with the new generation appended
         return state + [response]
 
     def _reflection_node(self, state: List[BaseMessage]) -> List[BaseMessage]:
-        """Reflect on and critique the latest generation."""
+        """Reflect on and critique the latest generation using structured evaluation."""
         # Get the latest generation
         latest_generation = state[-1].content
 
-        # Create a reflection prompt
+        # Create a structured reflection prompt using CoT
         reflection_prompt = f"""
-        Review the following generated content as an expert educator:
+        Review the following generated educational content:
 
         {latest_generation}
 
-        Please critique this content considering:
-        1. Educational effectiveness - Is it clear, accurate, and pedagogically sound?
-        2. Completeness - Does it cover all necessary aspects?
-        3. Engagement - Will it engage and motivate learners?
+        Follow a Chain-of-Thought approach to evaluate this content systematically:
 
-        Provide specific, constructive feedback on how to improve this content.
+        Step 1: Analyze the pedagogical structure and approach
+        Step 2: Evaluate the technical accuracy and code quality
+        Step 3: Assess the clarity of explanations and examples
+        Step 4: Consider whether it addresses different learning styles
+        Step 5: Provide specific suggestions for improvement
+
+        For each step, provide your reasoning and specific feedback.
         """
 
         # Generate programming-focused reflection
         try:
             reflection_response = self.llm.invoke([
                 SystemMessage(content="""You are an experienced software developer and programming educator
-                reviewing educational content. Provide thoughtful, constructive criticism focusing on:
+                reviewing educational content. Use a Chain-of-Thought approach to provide structured, 
+                step-by-step feedback on:
+
                 1. Code quality and correctness - Is the code following best practices, is it efficient, and would it run as expected?
                 2. Educational value - Does it clearly explain programming concepts and build appropriate mental models?
                 3. Practical application - Does it connect theory to real-world programming scenarios?
-                4. Progressional learning - Does it scaffold concepts appropriately for beginners while challenging advanced learners?"""),
+                4. Progressional learning - Does it scaffold concepts appropriately for beginners while challenging advanced learners?
+
+                Structure your feedback with clear reasoning at each step."""),
                 HumanMessage(content=reflection_prompt)
             ])
         except Exception as e:
@@ -180,23 +216,29 @@ class TeachingAgent:
         return text
 
     def summarize_content(self, text: str) -> str:
-        """Generate a summary of the lecture content."""
+        """Generate a summary of the lecture content using Chain-of-Thought reasoning."""
         # Ensure text is not empty
         if not text or len(text.strip()) < 10:
             raise ValueError("Insufficient text content to summarize")
 
         # Limit text to avoid token limits, but ensure it's not empty
-        text_sample = text[:25000]  # Reduced from 25000 to avoid token limits
+        text_sample = text[:25000]
         if len(text_sample.strip()) < 10:
             raise ValueError("Text sample is too short after truncation")
 
-        # Initialize the reflection process with a summarization task
+        # Initialize the reflexion process with a CoT summarization task
         initial_prompt = f"""
-        Create a concise but comprehensive summary of the following programming lecture content:
+        Create a concise but comprehensive summary of the following programming lecture content.
 
+        Use Chain-of-Thought reasoning to:
+        1. First identify the main programming topics and concepts
+        2. Then analyze how these concepts relate to each other
+        3. Finally synthesize this into a structured summary
+
+        Lecture content:
         {text_sample}
 
-        The summary should:
+        Your summary should:
         1. Highlight key programming concepts and important points
         2. Identify main topics covered
         3. Be organized in a logical structure
@@ -206,7 +248,7 @@ class TeachingAgent:
         # Print prompt length for debugging
         print(f"Summarization prompt length: {len(initial_prompt)} characters")
 
-        # Run the reflection graph
+        # Run the reflexion graph
         messages = [HumanMessage(content=initial_prompt)]
         try:
             result = self.graph.invoke(messages)
@@ -215,66 +257,94 @@ class TeachingAgent:
             return summary
         except Exception as e:
             print(f"Error during summarization: {e}")
-            # Provide a fallback response rather than failing completely
+            # Provide a fallback response
             return "This lecture appears to contain programming content. The material covers various programming topics and examples."
 
     def detect_programming_language(self, text: str) -> str:
         """
-        Detect the main programming language discussed in the lecture content.
-
-        Args:
-            text (str): The lecture content text
-
-        Returns:
-            str: Detected programming language (e.g., "python", "sql", "javascript")
+        Detect the main programming language discussed in the lecture content with improved accuracy.
         """
-        # Take just the first part of the text to save tokens
-        text_sample = text[:1500]
+        # Take a larger sample of the text to improve detection
+        text_sample = text[:3000]
 
-        # Create a simple prompt to detect the programming language
+        # Create a structured analytic prompt for language detection
         detect_prompt = f"""
-        Based on the following lecture content, determine the main programming language being discussed.
-        Return only the language name in lowercase (e.g., "python", "sql", "javascript", "java", "c++", etc.).
-        If no specific programming language is discussed, respond with "general".
+        Analyze the following programming lecture content and determine the main programming language being discussed.
 
         Content excerpt:
         {text_sample}
+
+        Follow these steps:
+        1. Look for explicit language names mentioned (Python, JavaScript, Java, etc.)
+        2. Identify language-specific syntax (semicolons, brackets, indentation patterns)
+        3. Detect characteristic keywords and functions
+        4. Note any code examples and their syntax patterns
+
+        Common language indicators:
+        - Python: def, import, print(), indentation, no semicolons, range(), list comprehensions
+        - JavaScript: var/let/const, function, semicolons, braces for blocks, console.log()
+        - Java: public class, static void main, System.out.println(), strong typing
+        - C++: #include, cout, cin, int main(), namespaces
+        - SQL: SELECT, FROM, WHERE, JOIN, database terminology
+
+        Return ONLY ONE of these language names in lowercase:
+        python, javascript, java, cpp, csharp, sql, ruby, go, php, swift, typescript, kotlin, rust, html, css, general
+
+        If you cannot confidently determine a specific language or the content covers multiple languages equally, return "general".
+
+        RETURN ONLY THE LANGUAGE NAME, NO OTHER TEXT OR EXPLANATION.
         """
 
         try:
-            # Use a single LLM call (no reflection needed for this simple task)
+            # Use a direct approach to avoid citation issues
             response = self.llm.invoke([
-                SystemMessage(content="You analyze text and extract the main programming language discussed."),
+                SystemMessage(
+                    content="You are a programming language analyzer. Your only task is to identify the primary programming language in educational content. Return only a single word - the language name."),
                 HumanMessage(content=detect_prompt)
             ])
 
-            # Extract and clean the language name
+            # Clean and normalize the response
             language = response.content.strip().lower()
 
-            # Handle cases where no specific language is detected
-            if "not" in language or "multiple" in language or "cannot" in language or len(language) > 20:
-                return "general"
+            # Check for validity and normalize
+            valid_languages = [
+                "python", "javascript", "java", "cpp", "csharp", "sql",
+                "ruby", "go", "php", "swift", "typescript", "kotlin",
+                "rust", "html", "css", "general"
+            ]
 
-            return language
+            # Remove any extra text (explanations, etc.)
+            if "\n" in language:
+                language = language.split("\n")[0].strip()
+
+            # Further normalize by extracting just the language name
+            for valid_lang in valid_languages:
+                if valid_lang in language:
+                    return valid_lang
+
+            # If we can't match to a known language, default to general
+            print(f"Language detection returned '{language}' which was normalized to 'general'")
+            return "general"
+
         except Exception as e:
-            print(f"Error detecting language: {e}")
+            print(f"Error in language detection: {e}")
             return "general"  # Default to general if there's an error
 
-    def create_with_reflection(self, prompt: str, system_prompt: str = None) -> str:
+    def create_with_reflexion(self, prompt: str, system_prompt: str = None) -> str:
         """
-        Generic function to create content with reflection.
-        Uses the reflection graph for any type of content.
+        Generic function to create content with reflexion.
+        Uses the reflexion graph for any type of content.
 
         Args:
             prompt (str): The prompt for content generation
             system_prompt (str, optional): System prompt for initial message
 
         Returns:
-            str: The generated content after reflection
+            str: The generated content after reflexion
         """
         # Create initial message
         if system_prompt:
-            # When we have a system prompt, use it with the reflection process
+            # When we have a system prompt, use it with the reflexion process
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=prompt)
@@ -285,15 +355,15 @@ class TeachingAgent:
             # No system prompt, just use the human message directly
             messages = [HumanMessage(content=prompt)]
 
-        # Run the reflection graph with the messages
+        # Run the reflexion graph with the messages
         try:
             result = self.graph.invoke(messages)
             # Extract the final content from the result
             content = result[-1].content
             return content
         except Exception as e:
-            print(f"Error in reflection process: {e}")
-            # If reflection fails, try a direct generation
+            print(f"Error in reflexion process: {e}")
+            # If reflexion fails, try a direct generation
             try:
                 if system_prompt:
                     response = self.llm.invoke([
@@ -308,57 +378,88 @@ class TeachingAgent:
                 return f"Unable to generate content. Error: {str(e2)}"
 
     def create_code_examples(self, text: str, language: str) -> str:
-        """Generate code examples for the detected programming language with reflection."""
+        """Generate code examples using ReAct approach."""
         # Take a sample of the text to avoid token limits
         text_sample = text[:3000]
 
-        # Create a prompt for code examples
+        # Create a ReAct prompt for code examples
         code_prompt = f"""
-        Create 2-3 clear, educational code examples in {language.upper()} based on the concepts in this lecture:
+        Create 2-3 clear, educational code examples in {language.upper()} based on the concepts in this lecture.
 
-        {text_sample}
+        Use the ReAct approach:
+
+        Thought: First, identify key concepts from the lecture that would benefit from code examples
+        Action: Create a code example that teaches this concept
+
+        IMPORTANT FORMATTING INSTRUCTIONS:
+        - Keep each "Thought:" section SEPARATE from code blocks
+        - Keep each "Action:" section SEPARATE from code blocks 
+        - Place all code in proper markdown code blocks with triple backticks
+        - Use clear section headers for each example
+        - Add meaningful comments within the code blocks
+        - NEVER include "Thought:" or "Action:" markers inside code blocks
 
         For each example:
-        1. Focus on a key concept from the lecture
-        2. Include comments explaining how the code works
-        3. Show expected output where appropriate
-        4. Keep examples simple but practical
+        1. Include a "Thought:" section explaining what concept you're demonstrating
+        2. Include an "Action:" section introducing the example
+        3. Provide a code block with the example, including comments
+        4. Show expected output where appropriate
+
+        Lecture excerpt:
+        {text_sample}
         """
 
-        # System prompt for code examples
+        # System prompt for code examples with CoT and ReAct
         system_prompt = f"""You are an expert {language} programmer creating educational code examples.
-        Your examples should be clear, concise, and follow best practices.
-        Format your code with proper syntax highlighting and clear comments.
-        Use simple examples that demonstrate important concepts."""
+        Use both Chain-of-Thought and ReAct approaches to create clear, step-by-step explanations.
+        For Chain-of-Thought, break down your reasoning into explicit steps.
+        For ReAct, alternate between thinking about the educational goal and acting by creating code.
 
-        # Use reflection to generate and improve the code examples
-        return self.create_with_reflection(code_prompt, system_prompt)
+        CRITICAL FORMATTING RULES:
+        1. ALWAYS place "Thought:" and "Action:" markers OUTSIDE of code blocks
+        2. NEVER include these markers inside ```{language} code blocks
+        3. Place ALL code examples inside proper markdown code blocks with language specified
+        4. Structure each example with clear Thought/Action separation
+        5. Use proper markdown formatting for all content
+
+        Your examples should be:
+        - Clear and concise
+        - Following best practices
+        - Well-commented
+        - Demonstrating important concepts from the lecture
+        """
+
+        # Use reflexion to generate and improve the code examples
+        return self.create_with_reflexion(code_prompt, system_prompt)
 
     def create_practice_exercises(self, text: str, language: str) -> str:
         """
-        Generate hands-on practice exercises with solutions using reflection.
-
-        Args:
-            text (str): The lecture content
-            language (str): The programming language
-
-        Returns:
-            str: Formatted practice exercises with solutions
+        Generate hands-on practice exercises with solutions using ReAct and CoT.
         """
         # Take a sample of the text to avoid token limits
         text_sample = text[:3000]
 
-        # Create a prompt for practice exercises
+        # Create a prompt for practice exercises using ReAct and CoT
         practice_prompt = f"""
-        Create 3 practical coding exercises in {language.upper()} based on the concepts in this lecture:
+        Create 3 practical coding exercises in {language.upper()} based on the concepts in this lecture.
 
+        Use the ReAct (Reasoning + Acting) approach:
+
+        Thought: First, identify key learning objectives from the lecture
+        Action: Design an exercise that tests understanding of these objectives
+        Thought: Consider what starter code would be helpful
+        Action: Create starter code that guides without giving away the solution
+        Thought: Develop a complete solution with step-by-step reasoning
+        Action: Provide a detailed explanation of the solution
+
+        Lecture excerpt:
         {text_sample}
 
         For each exercise:
         1. Create a clear problem statement
         2. Provide starter code when appropriate
         3. Include a complete solution
-        4. Explain how the solution works
+        4. Explain how the solution works using Chain-of-Thought reasoning
 
         Format each exercise as:
 
@@ -378,27 +479,34 @@ class TeachingAgent:
         ```
 
         ### Explanation
-        [Detailed explanation of the solution]
+        [Detailed explanation of the solution with step-by-step reasoning]
         """
 
         # System prompt for practice exercises
         system_prompt = f"""You are an expert {language} programming teacher creating educational exercises.
+        Use Chain-of-Thought reasoning to break down complex problems into understandable steps.
         Your exercises should be challenging but achievable, building on concepts from the lecture.
         Each exercise should include a clear problem statement, starter code, complete solution, and explanation.
         Make sure the exercises progress in difficulty and cover different aspects of the lecture content."""
 
-        # Use reflection to generate and improve the practice exercises
-        return self.create_with_reflection(practice_prompt, system_prompt)
+        # Use reflexion to generate and improve the practice exercises
+        return self.create_with_reflexion(practice_prompt, system_prompt)
 
     def create_assessment(self, text: str, language: str) -> Dict[str, Any]:
-        """Generate programming-focused assessment questions and answers with reflection."""
+        """Generate assessment questions using Chain-of-Thought reasoning."""
         # Take a sample of the text to avoid token limits
         text_sample = text[:3000]
 
-        # Create a prompt for assessment questions
+        # Create a prompt for assessment questions using CoT
         assessment_prompt = f"""
-        Create 5 assessment questions with answers about {language} programming based on this lecture:
+        Create 5 assessment questions with answers about {language} programming based on this lecture.
 
+        Use Chain-of-Thought reasoning to:
+        1. First identify the key concepts that should be assessed
+        2. Then formulate questions that test understanding of these concepts
+        3. Finally develop detailed explanations for the answers
+
+        Lecture excerpt:
         {text_sample}
 
         Include a mix of:
@@ -411,22 +519,23 @@ class TeachingAgent:
         Format as:
 
         Question 1: [Question text]
-        Answer 1: [Answer text]
+        Answer 1: [Answer text with step-by-step explanation]
 
         Question 2: [Question text] 
-        Answer 2: [Answer text]
+        Answer 2: [Answer text with step-by-step explanation]
 
         And so on.
         """
 
         # System prompt for assessment questions
         system_prompt = f"""You are creating assessment questions for {language} programming students.
+        Use Chain-of-Thought reasoning to make your answer explanations detailed and step-by-step.
         Your questions should test understanding of concepts, not just memorization.
         Include different question types and difficulties, focusing on the key concepts from the lecture.
         Provide detailed answers that explain not just what the answer is, but why it's correct."""
 
-        # Use reflection to generate and improve the assessment questions
-        qa_text = self.create_with_reflection(assessment_prompt, system_prompt)
+        # Use reflexion to generate and improve the assessment questions
+        qa_text = self.create_with_reflexion(assessment_prompt, system_prompt)
 
         # Parse the response into questions and answers
         questions_answers = self._parse_qa(qa_text)
@@ -485,7 +594,8 @@ class TeachingAgent:
 
     def process_lecture(self, pdf_path: str) -> Dict[str, Any]:
         """
-        Process a programming lecture PDF and return comprehensive teaching materials.
+        Process a programming lecture PDF and return comprehensive teaching materials
+        with both process and final result versions.
 
         Args:
             pdf_path (str): Path to the lecture PDF file
@@ -502,27 +612,36 @@ class TeachingAgent:
             language = self.detect_programming_language(text)
             print(f"Detected language: {language}")
 
-            # Generate summary
+            # Generate summary using Chain-of-Thought
             summary = self.summarize_content(text)
             print("Generated summary")
 
-            # Generate code examples
+            # Generate code examples with ReAct (includes thought process)
             code_examples = self.create_code_examples(text, language)
-            print("Generated code examples")
+            print("Generated code examples with thought process")
 
-            # Generate practice exercises
+            # Generate practice exercises using ReAct and CoT
             practice_exercises = self.create_practice_exercises(text, language)
             print("Generated practice exercises")
 
-            # Generate assessment questions
+            # Generate assessment questions using CoT
             assessment = self.create_assessment(text, language)
             print("Generated assessment questions")
+
+            # Post-process to create clean versions
+            code_examples_clean = self.clean_thought_process(code_examples)
+            print("Created clean version of code examples")
+
+            practice_exercises_clean = self.clean_thought_process(practice_exercises)
+            print("Created clean version of practice exercises")
 
             return {
                 "language": language,
                 "summary": summary,
                 "code_examples": code_examples,
+                "code_examples_clean": code_examples_clean,
                 "practice_exercises": practice_exercises,
+                "practice_exercises_clean": practice_exercises_clean,
                 "assessment": assessment
             }
         except Exception as e:
@@ -532,12 +651,100 @@ class TeachingAgent:
                 "language": "general",
                 "summary": "Unable to process the lecture content fully.",
                 "code_examples": "Code examples could not be generated.",
+                "code_examples_clean": "Code examples could not be generated.",
                 "practice_exercises": "Practice exercises could not be generated.",
+                "practice_exercises_clean": "Practice exercises could not be generated.",
                 "assessment": {
                     "questions": ["What topics does this lecture cover?"],
                     "answers": ["The lecture appears to cover programming topics."]
                 }
             }
+
+    def clean_thought_process(self, content: str) -> str:
+        """
+        Post-process content to remove Thought/Action markers and create a clean version.
+
+        Args:
+            content: The original content with Thought/Action sections
+
+        Returns:
+            Clean version with thought process removed
+        """
+        if not content or len(content) < 10:
+            return content
+
+        try:
+            # Create a prompt to clean the content
+            clean_prompt = f"""
+            Below is educational content with "Thought:" and "Action:" markers showing the reasoning process.
+            Please create a clean version of this content by:
+
+            1. Removing all "Thought:" sections completely
+            2. Removing "Action:" markers but keeping the action content
+            3. Preserving all code blocks and their comments exactly as they are
+            4. Keeping all examples, explanations, and outputs intact
+            5. Ensuring proper markdown formatting with headings and code blocks
+            6. Removing any placeholders like "THOUGHT_PLACEHOLDER_X"
+
+            Original content:
+            ```
+            {content}
+            ```
+
+            Output only the clean version without any explanation.
+            """
+
+            response = self.llm.invoke([
+                SystemMessage(
+                    content="You are a content formatter that removes thought process markers from educational content while preserving the core material."),
+                HumanMessage(content=clean_prompt)
+            ])
+
+            clean_content = response.content.strip()
+
+            # If API call fails or returns empty, fall back to regex-based cleaning
+            if not clean_content or len(clean_content) < 20:
+                return self._regex_clean_thought_process(content)
+
+            return clean_content
+
+        except Exception as e:
+            print(f"Error in clean_thought_process: {e}")
+            # Fall back to regex-based cleaning
+            return self._regex_clean_thought_process(content)
+
+    def _regex_clean_thought_process(self, content: str) -> str:
+        """
+        Use regex to clean thought process markers when the API approach fails.
+        """
+        import re
+
+        # Skip if content is too short
+        if not content or len(content) < 10:
+            return content
+
+        try:
+            # Remove "Thought:" sections (patterns like "Thought: text here Action:" or "Thought: text here ```")
+            cleaned = re.sub(r'Thought:.*?(?=Action:|```|\*\*Example|\*\*|##|$)', '', content, flags=re.DOTALL)
+
+            # Remove "Action:" markers but keep the content
+            cleaned = re.sub(r'Action:\s*', '', cleaned)
+
+            # Remove any "THOUGHT_PLACEHOLDER_X" markers
+            cleaned = re.sub(r'THOUGHT_PLACEHOLDER_\d+', '', cleaned)
+
+            # Clean up excess whitespace and newlines
+            cleaned = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned)
+
+            # If cleaning produced something too short, return original
+            if len(cleaned.strip()) < len(content) * 0.3:
+                return content
+
+            return cleaned.strip()
+
+        except Exception as e:
+            print(f"Error in regex cleaning: {e}")
+            return content
 
 
 # Test code if run directly
@@ -546,7 +753,7 @@ if __name__ == "__main__":
 
     try:
         # Initialize the agent first
-        agent = TeachingAgent()
+        agent = ReflexionTeachingAgent()
 
         if len(sys.argv) > 1:
             # Use the file path provided as command line argument
