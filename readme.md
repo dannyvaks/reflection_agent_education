@@ -14,6 +14,7 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - API for programmatic integration
 - Interactive code execution after each question with basic sandboxing
 - Automatic code feedback using the Reflexion agent and grading with average score
+- Friendly visual feedback for code submissions with an overall score summary
 
 ## Methodology and Architecture
 

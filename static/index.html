@@ -667,12 +667,35 @@
                                 body: JSON.stringify({ code: codeArea.value, exercise_id: questions[i], expected_solution: answers[i] })
                             });
                             const dataRes = await res.json();
-                            feedback.textContent = JSON.stringify(dataRes, null, 2);
                             grades[i] = dataRes.is_correct ? 1 : 0;
                             gradeDiv.style.display = 'block';
                             gradeDiv.textContent = dataRes.is_correct ? '✅ Correct' : '❌ Incorrect';
                             answer.style.display = 'block';
                             updateGradeSummary();
+
+                            // Display feedback in a user-friendly way
+                            let fbHtml = '';
+                            if (dataRes.is_correct) {
+                                fbHtml += '<p>✅ Correct Solution!</p>';
+                            } else {
+                                fbHtml += '<p>❌ Your solution needs improvements.</p>';
+                                if (dataRes.misconceptions && dataRes.misconceptions.length) {
+                                    fbHtml += '<h4>Misconceptions</h4><ul>' +
+                                        dataRes.misconceptions.map(m => `<li>${escapeHtml(m)}</li>`).join('') +
+                                        '</ul>';
+                                }
+                                if (dataRes.suggestions && dataRes.suggestions.length) {
+                                    fbHtml += '<h4>Suggestions</h4><ul>' +
+                                        dataRes.suggestions.map(s => `<li>${escapeHtml(s)}</li>`).join('') +
+                                        '</ul>';
+                                }
+                                if (dataRes.hints && dataRes.hints.length) {
+                                    fbHtml += '<h4>Hints</h4><ul>' +
+                                        dataRes.hints.map(h => `<li>${escapeHtml(h)}</li>`).join('') +
+                                        '</ul>';
+                                }
+                            }
+                            feedback.innerHTML = fbHtml;
                         } catch (err) {
                             feedback.textContent = 'Error analyzing code';
                         }
@@ -714,6 +737,9 @@
                 let thoughtCounter = 0;
                 let actionCounter = 0;
 
+                // We'll build the formatted string from the cleaned input
+                let formatted = cleaned;
+
                 // Extract Thought sections and replace with placeholders
                 cleaned = cleaned.replace(/<div class="thought"><strong>Thought:<\/strong>(.*?)<\/div>/gs, function(match, thought) {
                     let placeholder = `THOUGHT_PLACEHOLDER_${thoughtCounter}`;
@@ -747,10 +773,10 @@
                 });
 
                 // Step 3: Convert markdown to HTML
-                // Replace markdown code blocks with HTML
-                formatted = cleaned.replace(/```(\w+)?\n([\s\S]*?)```/g, function(match, language, code) {
-                    const lang = language || '';
-                    return `<pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre>`;
+                // Replace markdown code blocks with HTML (with or without language)
+                formatted = formatted.replace(/```(?:([\w.+-]+)?\n)?([\s\S]*?)```/g, function(match, language, code) {
+                    const langClass = language ? `language-${language}` : '';
+                    return `<pre><code class="${langClass}">${escapeHtml(code)}</code></pre>`;
                 });
 
                 // Replace inline code
