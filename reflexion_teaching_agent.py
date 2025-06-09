@@ -505,7 +505,9 @@ class ReflexionTeachingAgent:
         if dataset_path and os.path.exists(dataset_path):
             try:
                 examples = self._get_similar_examples(text_sample, dataset_path, num_examples=5)
-                for ex in examples:
+                print("Selected dataset examples for assessment generation:")
+                for idx, ex in enumerate(examples, 1):
+                    print(f"Example {idx}: {ex['instruction'][:80]}")
                     examples_text += (
                         f"Instruction: {ex['instruction']}\n"
                         f"Input: {ex['input']}\n"
@@ -550,53 +552,33 @@ class ReflexionTeachingAgent:
 
     def _parse_qa(self, qa_text: str) -> Dict[str, Any]:
         """Parse questions and answers text into a structured format."""
-        lines = qa_text.strip().split('\n')
+        import re
+
+        pattern = re.compile(
+            r"Question\s*\d+\s*:(.*?)\n\s*Answer\s*\d+\s*:(.*?)(?=Question\s*\d+\s*:|$)",
+            re.DOTALL | re.IGNORECASE,
+        )
+        matches = pattern.findall(qa_text)
+
         questions = []
         answers = []
+        for q, a in matches:
+            q = q.strip()
+            a = a.strip()
+            if q and a:
+                questions.append(q)
+                answers.append(a)
 
-        current_q = ""
-        current_a = ""
-
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-
-            if line.lower().startswith("question"):
-                # Save previous Q&A if we're starting a new question
-                if current_q and current_a:
-                    questions.append(current_q)
-                    answers.append(current_a)
-
-                # Extract the new question
-                parts = line.split(':', 1)
-                if len(parts) > 1:
-                    current_q = parts[1].strip()
-                else:
-                    current_q = ""
-                current_a = ""
-
-            elif line.lower().startswith("answer"):
-                # Extract the answer
-                parts = line.split(':', 1)
-                if len(parts) > 1:
-                    current_a = parts[1].strip()
-                else:
-                    current_a = ""
-
-        # Add the last Q&A
-        if current_q and current_a:
-            questions.append(current_q)
-            answers.append(current_a)
-
-        # If parsing failed, provide fallback
+        # Fallback if regex failed
         if not questions or not answers:
             questions = ["What is this lecture about?"]
             answers = ["This lecture covers programming concepts and techniques."]
 
+        # Ensure equal length and at most 10 items
+        length = min(len(questions), len(answers), 10)
         return {
-            "questions": questions,
-            "answers": answers
+            "questions": questions[:length],
+            "answers": answers[:length],
         }
 
     def _get_similar_examples(self, text: str, dataset_path: str, num_examples: int = 5) -> List[Dict[str, str]]:
