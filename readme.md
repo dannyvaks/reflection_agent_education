@@ -11,10 +11,12 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Creation of practice exercises with solutions
 - Generation of assessment questions and answers
 - 10-question assessments with dataset-based examples (at least 8 with code tasks)
+- Selected dataset examples are shown in Learning Process view for transparency
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
 - Interactive code execution after each question with basic sandboxing
-- Automatic code feedback using the Reflexion agent and grading with average score
+ - Automatic code feedback using the Reflexion agent with per-question scores
+   (each question contributes up to 10% toward the overall grade)
 - Friendly visual feedback for code submissions with an overall score summary
 
 ## Methodology and Architecture

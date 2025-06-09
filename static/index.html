@@ -159,6 +159,12 @@
             padding: 0;
             color: inherit;
         }
+        .rag-examples {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+        }
         .code-input {
             width: 100%;
             padding: 10px;
@@ -432,6 +438,7 @@
 
             <div class="assessment-questions">
                 <h3>Assessment Questions</h3>
+                <div id="datasetExamples" class="markdown-content rag-examples content-process"></div>
                 <div id="questionsContainer"></div>
             </div>
             <div id="gradeSummary" class="grade-summary"></div>
@@ -458,6 +465,7 @@
             const practiceExercisesContent = document.getElementById('practiceExercisesContent');
             const practiceExercisesProcessContent = document.getElementById('practiceExercisesProcessContent');
             const questionsContainer = document.getElementById('questionsContainer');
+            const datasetExamplesContainer = document.getElementById('datasetExamples');
             const errorMessage = document.getElementById('errorMessage');
             const printBtn = document.getElementById('printBtn');
             const gradeSummary = document.getElementById('gradeSummary');
@@ -586,6 +594,20 @@
                 practiceExercisesContent.innerHTML = formatMarkdownContent(data.practice_exercises_clean || data.practice_exercises);
                 practiceExercisesProcessContent.innerHTML = formatMarkdownContent(data.practice_exercises);
 
+                // Show dataset examples in process view
+                datasetExamplesContainer.innerHTML = '';
+                if (data.assessment.dataset_examples && data.assessment.dataset_examples.length) {
+                    let exHtml = '<h4>RAG Reference Examples</h4>';
+                    data.assessment.dataset_examples.forEach((ex, idx) => {
+                        exHtml += `<div><strong>Example ${idx + 1}</strong>` +
+                                  `<p>${escapeHtml(ex.instruction)}</p>` +
+                                  `<pre>${escapeHtml(ex.input)}</pre>` +
+                                  `<pre>${escapeHtml(ex.output)}</pre>` +
+                                  `</div>`;
+                    });
+                    datasetExamplesContainer.innerHTML = exHtml;
+                }
+
                 // Display questions
                 questionsContainer.innerHTML = '';
                 const questions = data.assessment.questions;
@@ -667,9 +689,10 @@
                                 body: JSON.stringify({ code: codeArea.value, exercise_id: questions[i], expected_solution: answers[i] })
                             });
                             const dataRes = await res.json();
-                            grades[i] = dataRes.is_correct ? 1 : 0;
+                            const score = typeof dataRes.score === 'number' ? dataRes.score : (dataRes.is_correct ? 100 : 0);
+                            grades[i] = score;
                             gradeDiv.style.display = 'block';
-                            gradeDiv.textContent = dataRes.is_correct ? '✅ Correct' : '❌ Incorrect';
+                            gradeDiv.textContent = `Score: ${score.toFixed(0)}%`;
                             answer.style.display = 'block';
                             updateGradeSummary();
 
@@ -856,7 +879,7 @@
                     return;
                 }
                 const average = validGrades.reduce((a, b) => a + b, 0) / validGrades.length;
-                gradeSummary.textContent = `Average Score: ${(average * 100).toFixed(0)}%`;
+                gradeSummary.textContent = `Average Score: ${average.toFixed(0)}%`;
             }
 
             // Escape HTML special characters

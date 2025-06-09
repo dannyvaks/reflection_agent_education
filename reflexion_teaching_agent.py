@@ -502,6 +502,7 @@ class ReflexionTeachingAgent:
         # Try to get reference examples from dataset for RAG
         dataset_path = os.environ.get("INSTRUCTION_DATASET_PATH")
         examples_text = ""
+        selected_examples: List[Dict[str, str]] = []
         if dataset_path and os.path.exists(dataset_path):
             try:
                 examples = self._get_similar_examples(text_sample, dataset_path, num_examples=5)
@@ -513,6 +514,7 @@ class ReflexionTeachingAgent:
                         f"Input: {ex['input']}\n"
                         f"Output: {ex['output']}\n\n"
                     )
+                selected_examples = examples
             except Exception as e:
                 print(f"Example retrieval failed: {e}")
 
@@ -548,6 +550,7 @@ class ReflexionTeachingAgent:
 
         qa_text = self.create_with_reflexion(assessment_prompt, system_prompt)
         questions_answers = self._parse_qa(qa_text)
+        questions_answers["dataset_examples"] = selected_examples
         return questions_answers
 
     def _parse_qa(self, qa_text: str) -> Dict[str, Any]:
@@ -788,6 +791,7 @@ class ReflexionTeachingAgent:
         - misconceptions
         - suggestions
         - hints
+        - score (0-100 reflecting how correct the solution is)
         """
         return prompt
 
@@ -809,8 +813,17 @@ class ReflexionTeachingAgent:
                         "is_correct": "correct" in analysis.lower() and "incorrect" not in analysis.lower(),
                         "misconceptions": [],
                         "suggestions": [],
-                        "hints": []
+                        "hints": [],
+                        "score": 0.0,
                     }
+
+            if "score" not in result:
+                result["score"] = 100.0 if result.get("is_correct") else 0.0
+            else:
+                try:
+                    result["score"] = float(result["score"])
+                except Exception:
+                    result["score"] = 100.0 if result.get("is_correct") else 0.0
             return result
         except Exception as e:
             print(f"Error in code analysis: {e}")
@@ -818,7 +831,8 @@ class ReflexionTeachingAgent:
                 "is_correct": False,
                 "misconceptions": ["Unable to fully analyze your code"],
                 "suggestions": ["Please review your code for syntax errors"],
-                "hints": ["Check the exercise requirements carefully"]
+                "hints": ["Check the exercise requirements carefully"],
+                "score": 0.0,
             }
 
 # Test code if run directly
