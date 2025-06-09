@@ -6,7 +6,10 @@ import uvicorn
 import os
 from tempfile import NamedTemporaryFile
 import shutil
-from typing import Dict, Any
+from typing import Dict, Any, List
+from pydantic import BaseModel
+
+from code_execution import execute_code
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (for Google API key)
@@ -43,6 +46,18 @@ except ValueError as e:
     print(f"Error initializing ReflexionTeachingAgent: {e}")
     print("The API will start, but endpoints requiring the agent will fail.")
     agent = None
+
+
+class CodeSubmission(BaseModel):
+    code: str
+    language: str = "python"
+    test_cases: List[Dict[str, Any]] | None = None
+
+
+class CodeAnalysisRequest(BaseModel):
+    code: str
+    exercise_id: str
+    expected_solution: str | None = None
 
 
 @app.post("/process-lecture/", response_model=Dict[str, Any])
@@ -91,6 +106,21 @@ async def process_lecture(file: UploadFile = File(...), language: str = None):
     finally:
         # Clean up the temporary file
         os.unlink(temp_path)
+
+
+@app.post("/execute-code/")
+async def execute_code_endpoint(code_submission: CodeSubmission):
+    """Execute user code and return the results."""
+    return execute_code(code_submission.code, code_submission.language, code_submission.test_cases)
+
+
+@app.post("/analyze-code/")
+async def analyze_code_endpoint(submission: CodeAnalysisRequest):
+    """Analyze code with the teaching agent and provide feedback."""
+    if agent is None:
+        raise HTTPException(status_code=500, detail="ReflexionTeachingAgent not initialized")
+    feedback = agent.analyze_code(submission.code, submission.exercise_id, submission.expected_solution)
+    return feedback
 
 
 @app.get("/health/")

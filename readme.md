@@ -12,6 +12,8 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Generation of assessment questions and answers
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
+- Interactive code execution with basic sandboxing
+- Automatic code feedback using the Reflexion agent
 
 ## Methodology and Architecture
 
@@ -128,6 +130,13 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
 After starting the server, you can access the API documentation at:
 ```
 http://localhost:8000/docs
+```
+
+Key endpoints:
+```
+POST /process-lecture/  - Process a lecture PDF
+POST /execute-code/     - Execute user code in a sandbox
+POST /analyze-code/     - Analyze code submissions and provide feedback
 ```
 
 ## Project Structure

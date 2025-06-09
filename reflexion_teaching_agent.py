@@ -747,6 +747,67 @@ class ReflexionTeachingAgent:
             return content
 
 
+    def create_code_analysis_prompt(self, user_code: str, exercise_description: str, expected_solution: str | None = None) -> str:
+        """Create a prompt for analyzing user code submissions."""
+        solution_part = f"Reference Solution:\n```\n{expected_solution}\n```" if expected_solution else ""
+        prompt = f"""
+        Analyze the following code submission for a programming exercise and provide detailed feedback:
+
+        Exercise Description:
+        {exercise_description}
+
+        User Submission:
+        ```
+        {user_code}
+        ```
+
+        {solution_part}
+
+        Use your programming expertise to:
+        1. Determine if the solution is correct
+        2. Identify any bugs, errors, or inefficiencies
+        3. Detect conceptual misunderstandings or misconceptions
+        4. Provide specific, constructive feedback
+        5. Suggest hints that guide the student without giving away the complete solution
+
+        Return your analysis in JSON with these fields:
+        - is_correct
+        - misconceptions
+        - suggestions
+        - hints
+        """
+        return prompt
+
+    def analyze_code(self, user_code: str, exercise_description: str, expected_solution: str | None = None) -> Dict[str, Any]:
+        """Analyze code using the Reflexion framework."""
+        try:
+            prompt = self.create_code_analysis_prompt(user_code, exercise_description, expected_solution)
+            analysis = self.create_with_reflexion(prompt)
+
+            import json, re
+            try:
+                result = json.loads(analysis)
+            except json.JSONDecodeError:
+                json_match = re.search(r'```json\s*(.*?)\s*```', analysis, re.DOTALL)
+                if json_match:
+                    result = json.loads(json_match.group(1))
+                else:
+                    result = {
+                        "is_correct": "correct" in analysis.lower() and "incorrect" not in analysis.lower(),
+                        "misconceptions": [],
+                        "suggestions": [],
+                        "hints": []
+                    }
+            return result
+        except Exception as e:
+            print(f"Error in code analysis: {e}")
+            return {
+                "is_correct": False,
+                "misconceptions": ["Unable to fully analyze your code"],
+                "suggestions": ["Please review your code for syntax errors"],
+                "hints": ["Check the exercise requirements carefully"]
+            }
+
 # Test code if run directly
 if __name__ == "__main__":
     import sys

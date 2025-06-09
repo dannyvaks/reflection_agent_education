@@ -409,6 +409,18 @@
                 <button id="printBtn" style="margin-top: 10px;">Print or Save as PDF</button>
             </div>
         </div>
+
+        <div class="interactive-code" style="margin-top:40px;">
+            <h2>Try Your Code</h2>
+            <textarea id="codeInput" rows="10" style="width:100%;"></textarea>
+            <div style="margin-top:10px;">
+                <button id="runCodeBtn">Run Code</button>
+                <button id="analyzeCodeBtn">Get Feedback</button>
+            </div>
+            <pre id="codeOutput" style="display:none;"></pre>
+            <pre id="codeFeedback" style="display:none;"></pre>
+        </div>
+    </div>
     </div>
 
     <script>
@@ -426,6 +438,11 @@
             const questionsContainer = document.getElementById('questionsContainer');
             const errorMessage = document.getElementById('errorMessage');
             const printBtn = document.getElementById('printBtn');
+            const runCodeBtn = document.getElementById('runCodeBtn');
+            const analyzeCodeBtn = document.getElementById('analyzeCodeBtn');
+            const codeInput = document.getElementById('codeInput');
+            const codeOutput = document.getElementById('codeOutput');
+            const codeFeedback = document.getElementById('codeFeedback');
 
             // Setup view toggle functionality
             const toggleButtons = document.querySelectorAll('.toggle-button');
@@ -456,6 +473,40 @@
             // Print functionality
             printBtn.addEventListener('click', function() {
                 window.print();
+            });
+
+            runCodeBtn.addEventListener('click', async function() {
+                codeOutput.style.display = 'block';
+                codeFeedback.style.display = 'none';
+                codeOutput.textContent = 'Running...';
+                try {
+                    const res = await fetch('/execute-code/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: codeInput.value, language: 'python' })
+                    });
+                    const data = await res.json();
+                    codeOutput.textContent = (data.output || '') + (data.errors || '');
+                } catch (err) {
+                    codeOutput.textContent = 'Error executing code';
+                }
+            });
+
+            analyzeCodeBtn.addEventListener('click', async function() {
+                codeFeedback.style.display = 'block';
+                codeOutput.style.display = 'none';
+                codeFeedback.textContent = 'Analyzing...';
+                try {
+                    const res = await fetch('/analyze-code/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: codeInput.value, exercise_id: 'adhoc' })
+                    });
+                    const data = await res.json();
+                    codeFeedback.textContent = JSON.stringify(data, null, 2);
+                } catch (err) {
+                    codeFeedback.textContent = 'Error analyzing code';
+                }
             });
 
             // API endpoint
