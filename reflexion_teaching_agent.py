@@ -2,6 +2,9 @@ import os
 from typing import List, Dict, Any, Tuple
 import PyPDF2
 import fitz  # PyMuPDF
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # LangGraph for reflection architecture
 from langgraph.graph import MessageGraph, END
@@ -493,51 +496,55 @@ class ReflexionTeachingAgent:
         return self.create_with_reflexion(practice_prompt, system_prompt)
 
     def create_assessment(self, text: str, language: str) -> Dict[str, Any]:
-        """Generate assessment questions using Chain-of-Thought reasoning."""
-        # Take a sample of the text to avoid token limits
+        """Generate 10 assessment questions using RAG and CoT."""
         text_sample = text[:3000]
 
-        # Create a prompt for assessment questions using CoT
+        # Try to get reference examples from dataset for RAG
+        dataset_path = os.environ.get("INSTRUCTION_DATASET_PATH")
+        examples_text = ""
+        if dataset_path and os.path.exists(dataset_path):
+            try:
+                examples = self._get_similar_examples(text_sample, dataset_path, num_examples=5)
+                for ex in examples:
+                    examples_text += (
+                        f"Instruction: {ex['instruction']}\n"
+                        f"Input: {ex['input']}\n"
+                        f"Output: {ex['output']}\n\n"
+                    )
+            except Exception as e:
+                print(f"Example retrieval failed: {e}")
+
         assessment_prompt = f"""
-        Create 5 assessment questions with answers about {language} programming based on this lecture.
+        Create 10 assessment questions with answers about {language} programming based on this lecture.
+        At least 8 questions should require the student to write or analyze code.
+
+        Use the following reference examples to guide style and expected answers:
+        {examples_text}
 
         Use Chain-of-Thought reasoning to:
-        1. First identify the key concepts that should be assessed
-        2. Then formulate questions that test understanding of these concepts
-        3. Finally develop detailed explanations for the answers
+        1. Identify key concepts that should be assessed
+        2. Formulate questions testing these concepts
+        3. Provide detailed explanations for the answers
 
         Lecture excerpt:
         {text_sample}
-
-        Include a mix of:
-        - Conceptual questions that test understanding of key concepts
-        - Code understanding questions where students analyze code snippets
-        - Practical application questions that ask how to solve specific problems
-
-        Make questions specific to the lecture content, not generic programming questions.
 
         Format as:
 
         Question 1: [Question text]
         Answer 1: [Answer text with step-by-step explanation]
 
-        Question 2: [Question text] 
+        Question 2: [Question text]
         Answer 2: [Answer text with step-by-step explanation]
 
-        And so on.
+        And so on up to Question 10.
         """
 
-        # System prompt for assessment questions
         system_prompt = f"""You are creating assessment questions for {language} programming students.
-        Use Chain-of-Thought reasoning to make your answer explanations detailed and step-by-step.
-        Your questions should test understanding of concepts, not just memorization.
-        Include different question types and difficulties, focusing on the key concepts from the lecture.
-        Provide detailed answers that explain not just what the answer is, but why it's correct."""
+        Your questions must mix conceptual understanding with practical coding tasks.
+        Provide clear, step-by-step explanations in the answers."""
 
-        # Use reflexion to generate and improve the assessment questions
         qa_text = self.create_with_reflexion(assessment_prompt, system_prompt)
-
-        # Parse the response into questions and answers
         questions_answers = self._parse_qa(qa_text)
         return questions_answers
 
@@ -591,6 +598,30 @@ class ReflexionTeachingAgent:
             "questions": questions,
             "answers": answers
         }
+
+    def _get_similar_examples(self, text: str, dataset_path: str, num_examples: int = 5) -> List[Dict[str, str]]:
+        """Retrieve similar instructions from the dataset using TF-IDF."""
+        data = pd.read_csv(dataset_path)
+        if not {'instruction', 'input', 'output'} <= set(data.columns):
+            return []
+
+        docs = (data['instruction'].fillna('') + ' ' + data['input'].fillna('')).tolist()
+        vectorizer = TfidfVectorizer(max_features=5000)
+        matrix = vectorizer.fit_transform(docs)
+        query_vec = vectorizer.transform([text])
+        sims = cosine_similarity(query_vec, matrix)[0]
+        top_idx = sims.argsort()[-num_examples:][::-1]
+
+        examples = []
+        for idx in top_idx:
+            row = data.iloc[idx]
+            examples.append({
+                'instruction': str(row.get('instruction', '')),
+                'input': str(row.get('input', '')),
+                'output': str(row.get('output', ''))
+            })
+
+        return examples
 
     def process_lecture(self, pdf_path: str) -> Dict[str, Any]:
         """

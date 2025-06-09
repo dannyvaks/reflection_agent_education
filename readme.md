@@ -10,6 +10,7 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Generation of code examples following best practices
 - Creation of practice exercises with solutions
 - Generation of assessment questions and answers
+- 10-question assessments with dataset-based examples (at least 8 with code tasks)
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
 - Interactive code execution after each question with basic sandboxing
@@ -104,10 +105,12 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
    ```
    export GOOGLE_API_KEY=your_api_key_here  # On Windows: set GOOGLE_API_KEY=your_api_key_here
    ```
-   
+
    Alternatively, create a `.env` file in the project root:
    ```
    GOOGLE_API_KEY=your_api_key_here
+   # Path to Kaggle code instruction dataset (train.csv)
+   INSTRUCTION_DATASET_PATH=/path/to/train.csv
    ```
 
 ### Running the Application
@@ -159,6 +162,7 @@ POST /analyze-code/     - Analyze code submissions and provide feedback
 - `create_code_examples()`: Uses the Reflexion graph to generate educational code examples
 - `create_practice_exercises()`: Uses the Reflexion graph to create programming exercises
 - `create_assessment()`: Uses the Reflexion graph to design assessment questions
+- `_get_similar_examples()`: Retrieves dataset examples for RAG question generation
 - `clean_thought_process()`: Post-processes content to create clean versions without thought process
 - `process_lecture()`: Orchestrates the full lecture processing workflow
 
