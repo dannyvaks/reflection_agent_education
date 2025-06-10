@@ -16,12 +16,13 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - API for programmatic integration
 - Automatic code feedback using the Reflexion agent with per-question scores
   (each question contributes up to 10% toward the overall grade)
-- Friendly Run Code button analyzes your solution and displays the model's code
-  afterward without actually executing your submission
+- Friendly **Analyze the Answer** button sends your solution to the `/analyze-code/` endpoint and shows
+  how the model would solve the problem
+- The agent uses Chain-of-Thought reflection to compare your code with the expected answer from the Kaggle dataset and assigns a score (each question contributes up to 10%)
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
 - Dataset connection status displayed, with retrieved examples listed when available
-- Single "Run Code" button shows the analysis results and grade
+- Single "Analyze the Answer" button shows the feedback and grade
 
 ## Methodology and Architecture
 
@@ -170,7 +171,8 @@ http://localhost:8000/docs
 Key endpoints:
 ```
 POST /process-lecture/  - Process a lecture PDF
-POST /analyze-code/     - Analyze code submissions and provide feedback
+POST /analyze-code/     - Analyze code submissions using CoT reflection and compare
+                          them to expected answers from the Kaggle dataset
 ```
 
 ## Project Structure
