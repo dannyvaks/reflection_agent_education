@@ -19,6 +19,7 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Friendly **Analyze the Answer** button sends your solution to the `/analyze-code/` endpoint and shows
   how the model would solve the problem
 - The agent uses Chain-of-Thought reflection to compare your code with the expected answer from the Kaggle dataset and assigns a score (each question contributes up to 10%)
+- RAG retrieval supplies similar dataset examples so the LLM can act as a judge and rank your answer fairly when you press **Analyze the Answer**
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
 - Dataset connection status displayed, with retrieved examples listed when available
@@ -106,6 +107,10 @@ Answer 1: ...
 
 The response also indicates whether the dataset was successfully loaded so the
 frontend can show a connection status.
+
+## Grading with RAG and Reflection
+
+When you click **Analyze the Answer**, your code is sent to the backend along with the question text, the expected solution, and any similar examples retrieved from the Kaggle dataset. The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` and feedback. This ranking lets you see exactly how close your answer is to the model solution.
 
 ## Setup Instructions
 
