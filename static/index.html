@@ -179,7 +179,6 @@
         .question-controls button {
             margin-right: 10px;
         }
-        .execution-output, .feedback-output {
             background-color: #2c3e50;
             color: #ecf0f1;
             padding: 10px;
@@ -632,16 +631,10 @@
                     codeArea.className = 'code-input';
 
                     const controls = document.createElement('div');
-                    controls.className = 'question-controls';
-                    const runBtn = document.createElement('button');
-                    runBtn.textContent = 'Run Code';
-                    const submitBtn = document.createElement('button');
-                    submitBtn.textContent = 'Submit Answer';
-                    controls.appendChild(runBtn);
+                    controls.className = 'question-controls';                    const submitBtn = document.createElement('button');
+                    submitBtn.textContent = 'Run Code';
                     controls.appendChild(submitBtn);
 
-                    const output = document.createElement('pre');
-                    output.className = 'execution-output';
 
                     const feedback = document.createElement('pre');
                     feedback.className = 'feedback-output';
@@ -659,31 +652,12 @@
                     questionCard.appendChild(questionText);
                     questionCard.appendChild(codeArea);
                     questionCard.appendChild(controls);
-                    questionCard.appendChild(output);
                     questionCard.appendChild(feedback);
                     questionCard.appendChild(answer);
                     questionCard.appendChild(gradeDiv);
 
-                    runBtn.addEventListener('click', async () => {
-                        output.style.display = 'block';
-                        feedback.style.display = 'none';
-                        output.textContent = 'Running...';
-                        try {
-                            const res = await fetch('/execute-code/', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ code: codeArea.value, language: 'python' })
-                            });
-                            const dataRes = await res.json();
-                            output.textContent = (dataRes.output || '') + (dataRes.errors || '');
-                        } catch (err) {
-                            output.textContent = 'Error executing code';
-                        }
-                    });
-
                     submitBtn.addEventListener('click', async () => {
                         feedback.style.display = 'block';
-                        output.style.display = 'none';
                         feedback.textContent = 'Analyzing...';
                         try {
                             const res = await fetch('/analyze-code/', {

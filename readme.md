@@ -20,6 +20,7 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
 - Dataset connection status displayed, with retrieved examples listed when available
+- Single "Run Code" button executes code and shows feedback
 
 ## Methodology and Architecture
 
