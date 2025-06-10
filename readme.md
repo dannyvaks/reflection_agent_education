@@ -14,13 +14,14 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Selected dataset examples are shown in Learning Process view for transparency
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
-- Interactive code execution after each question with basic sandboxing
- - Automatic code feedback using the Reflexion agent with per-question scores
-   (each question contributes up to 10% toward the overall grade)
+- Automatic code feedback using the Reflexion agent with per-question scores
+  (each question contributes up to 10% toward the overall grade)
+- Friendly Run Code button analyzes your solution and displays the model's code
+  afterward without actually executing your submission
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
 - Dataset connection status displayed, with retrieved examples listed when available
-- Single "Run Code" button executes code and shows feedback
+- Single "Run Code" button shows the analysis results and grade
 
 ## Methodology and Architecture
 
@@ -79,6 +80,31 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
 4. **Multi-Turn Refinement**: Content benefits from multiple iterations of feedback and enhancement.
 
 5. **Flexibility**: The dual view allows users to either see the full reasoning process or focus on the polished final result.
+
+## RAG-Based Assessment Generation
+
+Assessment questions are created using Retrieval Augmented Generation (RAG).
+During lecture processing, the agent retrieves up to five similar examples from
+a Kaggle dataset of Python instructions. Each example provides an `instruction`,
+`input`, and `output` field:
+
+```
+instruction: Write a function that adds two numbers.
+input: 2 3
+output: 5
+```
+
+These examples are included in the prompt so the language model can mimic their
+style and expected outputs while still using the Reflexion loop to refine the
+questions. The final output lists ten questions in the form:
+
+```
+Question 1: ...
+Answer 1: ...
+```
+
+The response also indicates whether the dataset was successfully loaded so the
+frontend can show a connection status.
 
 ## Setup Instructions
 
@@ -144,7 +170,6 @@ http://localhost:8000/docs
 Key endpoints:
 ```
 POST /process-lecture/  - Process a lecture PDF
-POST /execute-code/     - Execute user code in a sandbox
 POST /analyze-code/     - Analyze code submissions and provide feedback
 ```
 
