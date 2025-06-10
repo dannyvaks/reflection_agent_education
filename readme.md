@@ -18,6 +18,8 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
  - Automatic code feedback using the Reflexion agent with per-question scores
    (each question contributes up to 10% toward the overall grade)
 - Friendly visual feedback for code submissions with an overall score summary
+- Model solution shown after you submit your answer so you can compare
+- Dataset connection status displayed, with retrieved examples listed when available
 
 ## Methodology and Architecture
 

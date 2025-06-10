@@ -503,6 +503,7 @@ class ReflexionTeachingAgent:
         dataset_path = os.environ.get("INSTRUCTION_DATASET_PATH")
         examples_text = ""
         selected_examples: List[Dict[str, str]] = []
+        dataset_connected = False
         if dataset_path and os.path.exists(dataset_path):
             try:
                 examples = self._get_similar_examples(text_sample, dataset_path, num_examples=5)
@@ -515,6 +516,7 @@ class ReflexionTeachingAgent:
                         f"Output: {ex['output']}\n\n"
                     )
                 selected_examples = examples
+                dataset_connected = True
             except Exception as e:
                 print(f"Example retrieval failed: {e}")
 
@@ -551,6 +553,7 @@ class ReflexionTeachingAgent:
         qa_text = self.create_with_reflexion(assessment_prompt, system_prompt)
         questions_answers = self._parse_qa(qa_text)
         questions_answers["dataset_examples"] = selected_examples
+        questions_answers["dataset_connected"] = dataset_connected
         return questions_answers
 
     def _parse_qa(self, qa_text: str) -> Dict[str, Any]:
@@ -658,7 +661,8 @@ class ReflexionTeachingAgent:
                 "code_examples_clean": code_examples_clean,
                 "practice_exercises": practice_exercises,
                 "practice_exercises_clean": practice_exercises_clean,
-                "assessment": assessment
+                "assessment": assessment,
+                "dataset_connected": assessment.get("dataset_connected", False)
             }
         except Exception as e:
             print(f"Error in process_lecture: {e}")
@@ -673,7 +677,8 @@ class ReflexionTeachingAgent:
                 "assessment": {
                     "questions": ["What topics does this lecture cover?"],
                     "answers": ["The lecture appears to cover programming topics."]
-                }
+                },
+                "dataset_connected": False
             }
 
     def clean_thought_process(self, content: str) -> str:
@@ -786,12 +791,15 @@ class ReflexionTeachingAgent:
         4. Provide specific, constructive feedback
         5. Suggest hints that guide the student without giving away the complete solution
 
+        Additionally provide your own best attempt at the solution code.
+
         Return your analysis in JSON with these fields:
         - is_correct
         - misconceptions
         - suggestions
         - hints
         - score (0-100 reflecting how correct the solution is)
+        - model_solution (string containing your suggested solution code)
         """
         return prompt
 
@@ -824,6 +832,9 @@ class ReflexionTeachingAgent:
                     result["score"] = float(result["score"])
                 except Exception:
                     result["score"] = 100.0 if result.get("is_correct") else 0.0
+
+            if "model_solution" not in result:
+                result["model_solution"] = ""
             return result
         except Exception as e:
             print(f"Error in code analysis: {e}")
@@ -833,6 +844,7 @@ class ReflexionTeachingAgent:
                 "suggestions": ["Please review your code for syntax errors"],
                 "hints": ["Check the exercise requirements carefully"],
                 "score": 0.0,
+                "model_solution": "",
             }
 
 # Test code if run directly

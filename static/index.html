@@ -594,7 +594,7 @@
                 practiceExercisesContent.innerHTML = formatMarkdownContent(data.practice_exercises_clean || data.practice_exercises);
                 practiceExercisesProcessContent.innerHTML = formatMarkdownContent(data.practice_exercises);
 
-                // Show dataset examples in process view
+                // Show dataset examples or connection status
                 datasetExamplesContainer.innerHTML = '';
                 if (data.assessment.dataset_examples && data.assessment.dataset_examples.length) {
                     let exHtml = '<h4>RAG Reference Examples</h4>';
@@ -606,6 +606,9 @@
                                   `</div>`;
                     });
                     datasetExamplesContainer.innerHTML = exHtml;
+                } else {
+                    const msg = data.dataset_connected ? 'No similar examples found in dataset.' : 'Dataset connection failed or file missing.';
+                    datasetExamplesContainer.innerHTML = `<p><em>${msg}</em></p>`;
                 }
 
                 // Display questions
@@ -717,6 +720,9 @@
                                         dataRes.hints.map(h => `<li>${escapeHtml(h)}</li>`).join('') +
                                         '</ul>';
                                 }
+                            }
+                            if (dataRes.model_solution) {
+                                fbHtml += '<h4>Model Solution</h4><pre>' + escapeHtml(dataRes.model_solution) + '</pre>';
                             }
                             feedback.innerHTML = fbHtml;
                         } catch (err) {
