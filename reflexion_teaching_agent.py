@@ -21,8 +21,8 @@ class ReflexionTeachingAgent:
     to enhance educational content generation with structured reasoning.
     """
 
-    def __init__(self, model_name="gemini-2.0-flash", temperature=0.2, google_api_key=None):
-        """Initialize the teaching agent with Google Gemini LLM."""
+    def __init__(self, model_name="gemini-2.0-flash", temperature=0.2, google_api_key=None, dataset_path: str | None = None):
+        """Initialize the teaching agent with Google Gemini LLM and load dataset."""
         if not google_api_key:
             google_api_key = os.environ.get("GOOGLE_API_KEY")
             if not google_api_key:
@@ -40,6 +40,29 @@ class ReflexionTeachingAgent:
 
         # Create the reflexion graph
         self.graph = self._build_reflexion_graph()
+
+        # Load the local instruction dataset for RAG
+        if dataset_path is None:
+            dataset_path = os.environ.get("INSTRUCTION_DATASET_PATH")
+
+        self.dataset_connected = False
+        self.dataset = None
+        self.vectorizer = None
+        self.matrix = None
+        if dataset_path and os.path.exists(dataset_path):
+            try:
+                data = pd.read_csv(dataset_path)
+                if {'instruction', 'input', 'output'} <= set(data.columns):
+                    docs = (data['instruction'].fillna('') + ' ' + data['input'].fillna('')).tolist()
+                    self.vectorizer = TfidfVectorizer(max_features=5000)
+                    self.matrix = self.vectorizer.fit_transform(docs)
+                    self.dataset = data
+                    self.dataset_connected = True
+                    print(f"Loaded instruction dataset from {dataset_path} with {len(data)} rows")
+                else:
+                    print("Dataset missing required columns; ignoring")
+            except Exception as e:
+                print(f"Failed to load dataset: {e}")
 
     def _build_reflexion_graph(self) -> MessageGraph:
         """Build the reflexion graph using LangGraph."""
@@ -500,13 +523,12 @@ class ReflexionTeachingAgent:
         text_sample = text[:3000]
 
         # Try to get reference examples from dataset for RAG
-        dataset_path = os.environ.get("INSTRUCTION_DATASET_PATH")
         examples_text = ""
         selected_examples: List[Dict[str, str]] = []
-        dataset_connected = False
-        if dataset_path and os.path.exists(dataset_path):
+        dataset_connected = self.dataset_connected
+        if self.dataset_connected:
             try:
-                examples = self._get_similar_examples(text_sample, dataset_path, num_examples=5)
+                examples = self._get_similar_examples(text_sample, num_examples=5)
                 print("Selected dataset examples for assessment generation:")
                 for idx, ex in enumerate(examples, 1):
                     print(f"Example {idx}: {ex['instruction'][:80]}")
@@ -516,7 +538,6 @@ class ReflexionTeachingAgent:
                         f"Output: {ex['output']}\n\n"
                     )
                 selected_examples = examples
-                dataset_connected = True
             except Exception as e:
                 print(f"Example retrieval failed: {e}")
 
@@ -587,22 +608,18 @@ class ReflexionTeachingAgent:
             "answers": answers[:length],
         }
 
-    def _get_similar_examples(self, text: str, dataset_path: str, num_examples: int = 5) -> List[Dict[str, str]]:
-        """Retrieve similar instructions from the dataset using TF-IDF."""
-        data = pd.read_csv(dataset_path)
-        if not {'instruction', 'input', 'output'} <= set(data.columns):
+    def _get_similar_examples(self, text: str, num_examples: int = 5) -> List[Dict[str, str]]:
+        """Retrieve similar instructions from the loaded dataset using TF-IDF."""
+        if self.dataset is None or self.vectorizer is None or self.matrix is None:
             return []
 
-        docs = (data['instruction'].fillna('') + ' ' + data['input'].fillna('')).tolist()
-        vectorizer = TfidfVectorizer(max_features=5000)
-        matrix = vectorizer.fit_transform(docs)
-        query_vec = vectorizer.transform([text])
-        sims = cosine_similarity(query_vec, matrix)[0]
+        query_vec = self.vectorizer.transform([text])
+        sims = cosine_similarity(query_vec, self.matrix)[0]
         top_idx = sims.argsort()[-num_examples:][::-1]
 
         examples = []
         for idx in top_idx:
-            row = data.iloc[idx]
+            row = self.dataset.iloc[idx]
             examples.append({
                 'instruction': str(row.get('instruction', '')),
                 'input': str(row.get('input', '')),

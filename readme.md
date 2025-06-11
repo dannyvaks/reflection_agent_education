@@ -19,8 +19,8 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
   (each question contributes up to 10% toward the overall grade)
 - Friendly **Analyze the Answer** button sends your solution to the `/analyze-code/` endpoint and shows
   how the model would solve the problem
-- The agent uses Chain-of-Thought reflection to compare your code with the expected answer from the Kaggle dataset and assigns a score (each question contributes up to 10%)
-- RAG retrieval supplies similar dataset examples so the LLM can act as a judge and rank your answer fairly when you press **Analyze the Answer**
+- The agent uses Chain-of-Thought reflection to compare your code with answers from a local instruction dataset and assigns a score (each question contributes up to 10%)
+- RAG retrieval supplies similar examples from the dataset so the LLM can act as a judge and rank your answer fairly when you press **Analyze the Answer**
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
 - Button lets you show or hide the expected answer for each question
@@ -89,7 +89,7 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
 
 Assessment questions are created using Retrieval Augmented Generation (RAG).
 During lecture processing, the agent retrieves up to five similar examples from
-a Kaggle dataset of Python instructions. Each example provides an `instruction`,
+a local dataset of Python instructions. Each example provides an `instruction`,
 `input`, and `output` field:
 
 ```
@@ -112,7 +112,7 @@ frontend can show a connection status.
 
 ## Grading with RAG and Reflection
 
-When you click **Analyze the Answer**, your code is sent to the backend along with the question text, the expected solution, and any similar examples retrieved from the Kaggle dataset. The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` and feedback. This ranking lets you see exactly how close your answer is to the model solution.
+When you click **Analyze the Answer**, your code is sent to the backend along with the question text, the expected solution, and any similar examples retrieved from the local dataset. The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` and feedback. This ranking lets you see exactly how close your answer is to the model solution.
 
 ## Setup Instructions
 
@@ -148,8 +148,8 @@ When you click **Analyze the Answer**, your code is sent to the backend along wi
    Alternatively, create a `.env` file in the project root:
    ```
    GOOGLE_API_KEY=your_api_key_here
-   # Path to Kaggle code instruction dataset (train.csv)
-   INSTRUCTION_DATASET_PATH=/path/to/train.csv
+   # Path to local code instruction dataset (CSV)
+   INSTRUCTION_DATASET_PATH=/path/to/instructions.csv
    ```
 
 ### Running the Application
@@ -179,7 +179,7 @@ Key endpoints:
 ```
 POST /process-lecture/  - Process a lecture PDF
 POST /analyze-code/     - Analyze code submissions using CoT reflection and compare
-                          them to expected answers from the Kaggle dataset
+                          them to expected answers from the local dataset
 ```
 
 ## Project Structure
