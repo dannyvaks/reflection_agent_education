@@ -437,7 +437,8 @@
 
             <div class="assessment-questions">
                 <h3>Assessment Questions</h3>
-                <div id="datasetExamples" class="markdown-content rag-examples content-process"></div>
+                <button id="toggleExamplesBtn" style="margin-bottom:10px;">Show Reference Examples</button>
+                <div id="datasetExamples" class="markdown-content rag-examples content-process" style="display:none;"></div>
                 <div id="questionsContainer"></div>
             </div>
             <div id="gradeSummary" class="grade-summary"></div>
@@ -465,6 +466,7 @@
             const practiceExercisesProcessContent = document.getElementById('practiceExercisesProcessContent');
             const questionsContainer = document.getElementById('questionsContainer');
             const datasetExamplesContainer = document.getElementById('datasetExamples');
+            const toggleExamplesBtn = document.getElementById('toggleExamplesBtn');
             const errorMessage = document.getElementById('errorMessage');
             const printBtn = document.getElementById('printBtn');
             const gradeSummary = document.getElementById('gradeSummary');
@@ -494,6 +496,13 @@
                         hljs.highlightBlock(block);
                     });
                 });
+            });
+
+            // Toggle RAG example visibility
+            toggleExamplesBtn.addEventListener('click', function() {
+                const hidden = datasetExamplesContainer.style.display === 'none';
+                datasetExamplesContainer.style.display = hidden ? 'block' : 'none';
+                toggleExamplesBtn.textContent = hidden ? 'Hide Reference Examples' : 'Show Reference Examples';
             });
 
             // Print functionality
@@ -605,9 +614,14 @@
                                   `</div>`;
                     });
                     datasetExamplesContainer.innerHTML = exHtml;
+                    toggleExamplesBtn.style.display = 'inline-block';
+                    datasetExamplesContainer.style.display = 'none';
+                    toggleExamplesBtn.textContent = 'Show Reference Examples';
                 } else {
                     const msg = data.dataset_connected ? 'No similar examples found in dataset.' : 'Dataset connection failed or file missing.';
                     datasetExamplesContainer.innerHTML = `<p><em>${msg}</em></p>`;
+                    toggleExamplesBtn.style.display = 'none';
+                    datasetExamplesContainer.style.display = 'block';
                 }
 
                 // Display questions
@@ -634,6 +648,10 @@
                     controls.className = 'question-controls';                    const submitBtn = document.createElement('button');
                     submitBtn.textContent = 'Analyze the Answer';
                     controls.appendChild(submitBtn);
+                    const showAnswerBtn = document.createElement('button');
+                    showAnswerBtn.textContent = 'Show Expected Answer';
+                    showAnswerBtn.style.marginLeft = '10px';
+                    controls.appendChild(showAnswerBtn);
 
 
                     const feedback = document.createElement('pre');
@@ -670,7 +688,6 @@
                             grades[i] = score;
                             gradeDiv.style.display = 'block';
                             gradeDiv.textContent = `Score: ${score.toFixed(0)}%`;
-                            answer.style.display = 'block';
                             updateGradeSummary();
 
                             // Display feedback in a user-friendly way
@@ -697,11 +714,17 @@
                             }
                             if (dataRes.model_solution) {
                                 fbHtml += '<h4>Model Solution</h4><pre>' + escapeHtml(dataRes.model_solution) + '</pre>';
-                            }
-                            feedback.innerHTML = fbHtml;
-                        } catch (err) {
-                            feedback.textContent = 'Error analyzing code';
                         }
+                        feedback.innerHTML = fbHtml;
+                    } catch (err) {
+                        feedback.textContent = 'Error analyzing code';
+                    }
+                    });
+
+                    showAnswerBtn.addEventListener('click', () => {
+                        const hidden = answer.style.display === 'none';
+                        answer.style.display = hidden ? 'block' : 'none';
+                        showAnswerBtn.textContent = hidden ? 'Hide Expected Answer' : 'Show Expected Answer';
                     });
 
                     questionsContainer.appendChild(questionCard);

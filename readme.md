@@ -11,7 +11,8 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Creation of practice exercises with solutions
 - Generation of assessment questions and answers
 - 10-question assessments with dataset-based examples (at least 8 with code tasks)
-- Selected dataset examples are shown in Learning Process view for transparency
+- Toggle button reveals the dataset questions used during RAG along with their
+  expected answers so you can see exactly how grading works
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
 - Automatic code feedback using the Reflexion agent with per-question scores
@@ -22,6 +23,7 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - RAG retrieval supplies similar dataset examples so the LLM can act as a judge and rank your answer fairly when you press **Analyze the Answer**
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
+- Button lets you show or hide the expected answer for each question
 - Dataset connection status displayed, with retrieved examples listed when available
 - Single "Analyze the Answer" button shows the feedback and grade
 
