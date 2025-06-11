@@ -43,7 +43,10 @@ class ReflexionTeachingAgent:
 
         # Load the local instruction dataset for RAG
         if dataset_path is None:
-            dataset_path = os.environ.get("INSTRUCTION_DATASET_PATH")
+            dataset_path = os.environ.get(
+                "INSTRUCTION_DATASET_PATH",
+                os.path.join(os.path.dirname(__file__), "data", "instructions.csv"),
+            )
 
         self.dataset_connected = False
         self.dataset = None

@@ -149,7 +149,7 @@ When you click **Analyze the Answer**, your code is sent to the backend along wi
    ```
    GOOGLE_API_KEY=your_api_key_here
    # Path to local code instruction dataset (CSV)
-   INSTRUCTION_DATASET_PATH=/path/to/instructions.csv
+   INSTRUCTION_DATASET_PATH=./data/instructions.csv
    ```
 
 ### Running the Application

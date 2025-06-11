@@ -54,5 +54,8 @@ temp/
 # User-uploaded files
 uploads/
 
+# Local dataset
+data/instructions.csv
+
 # Generated files
 *.pdf
