@@ -11,6 +11,8 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Creation of practice exercises with solutions
 - Generation of assessment questions and answers
 - 10-question assessments with dataset-based examples (at least 8 with code tasks)
+- Similar questions retrieved by embedding the dataset with TF‑IDF and selecting
+  the top five matches for each lecture
 - Toggle button reveals the dataset questions used during RAG along with their
   expected answers so you can see exactly how grading works
 - Web interface with dual view mode (Learning Process and Final Result)
@@ -88,9 +90,15 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
 ## RAG-Based Assessment Generation
 
 Assessment questions are created using Retrieval Augmented Generation (RAG).
-During lecture processing, the agent retrieves up to five similar examples from
-a local dataset of Python instructions. Each example provides an `instruction`,
-`input`, and `output` field:
+When the application starts, the Kaggle instruction dataset specified by
+`INSTRUCTION_DATASET_PATH` is loaded into memory. The `instruction` and `input`
+columns are embedded with **TF‑IDF** and stored in a matrix so the agent can
+quickly search for relevant examples.
+
+During lecture processing, the agent vectorizes a short excerpt of the PDF and
+computes cosine similarity against the dataset embeddings. The top five matches
+are retrieved and logged. Each example contains an `instruction`, `input`, and
+`output` field:
 
 ```
 instruction: Write a function that adds two numbers.
@@ -98,9 +106,10 @@ input: 2 3
 output: 5
 ```
 
-These examples are included in the prompt so the language model can mimic their
-style and expected outputs while still using the Reflexion loop to refine the
-questions. The final output lists ten questions in the form:
+The agent inserts these five examples directly into the prompt when it asks the
+language model to generate assessment questions. This helps keep the questions
+consistent with the dataset style and expected outputs while still allowing the
+Reflexion loop to refine them. The final output lists ten questions in the form:
 
 ```
 Question 1: ...
@@ -113,6 +122,10 @@ frontend can show a connection status.
 ## Grading with RAG and Reflection
 
 When you click **Analyze the Answer**, your code is sent to the backend along with the question text, the expected solution, and any similar examples retrieved from the local dataset. The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` and feedback. This ranking lets you see exactly how close your answer is to the model solution.
+The same TF‑IDF similarity search used for question generation runs again so the
+LLM receives the most relevant dataset entries as context. These examples guide
+the model when it checks your code, ensuring consistency between question
+generation and grading.
 
 ## Setup Instructions
 
