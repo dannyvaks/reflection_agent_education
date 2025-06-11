@@ -10,8 +10,24 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Generation of code examples following best practices
 - Creation of practice exercises with solutions
 - Generation of assessment questions and answers
+- 10-question assessments with dataset-based examples (at least 8 with code tasks)
+- Similar questions retrieved by embedding the dataset with TF‑IDF and selecting
+  the top five matches for each lecture
+- Toggle button reveals the dataset questions used during RAG along with their
+  expected answers so you can see exactly how grading works
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
+- Automatic code feedback using the Reflexion agent with per-question scores
+  (each question contributes up to 10% toward the overall grade)
+- Friendly **Analyze the Answer** button sends your solution to the `/analyze-code/` endpoint and shows
+  how the model would solve the problem
+- The agent uses Chain-of-Thought reflection to compare your code with answers from a local instruction dataset and assigns a score (each question contributes up to 10%)
+- RAG retrieval supplies similar examples from the dataset so the LLM can act as a judge and rank your answer fairly when you press **Analyze the Answer**
+- Friendly visual feedback for code submissions with an overall score summary
+- Model solution shown after you submit your answer so you can compare
+- Button lets you show or hide the expected answer for each question
+- Dataset connection status displayed, with retrieved examples listed when available
+- Single "Analyze the Answer" button shows the feedback and grade
 
 ## Methodology and Architecture
 
@@ -71,6 +87,46 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
 
 5. **Flexibility**: The dual view allows users to either see the full reasoning process or focus on the polished final result.
 
+## RAG-Based Assessment Generation
+
+Assessment questions are created using Retrieval Augmented Generation (RAG).
+When the application starts, the Kaggle instruction dataset specified by
+`INSTRUCTION_DATASET_PATH` is loaded into memory. The `instruction` and `input`
+columns are embedded with **TF‑IDF** and stored in a matrix so the agent can
+quickly search for relevant examples.
+
+During lecture processing, the agent vectorizes a short excerpt of the PDF and
+computes cosine similarity against the dataset embeddings. The top five matches
+are retrieved and logged. Each example contains an `instruction`, `input`, and
+`output` field:
+
+```
+instruction: Write a function that adds two numbers.
+input: 2 3
+output: 5
+```
+
+The agent inserts these five examples directly into the prompt when it asks the
+language model to generate assessment questions. This helps keep the questions
+consistent with the dataset style and expected outputs while still allowing the
+Reflexion loop to refine them. The final output lists ten questions in the form:
+
+```
+Question 1: ...
+Answer 1: ...
+```
+
+The response also indicates whether the dataset was successfully loaded so the
+frontend can show a connection status.
+
+## Grading with RAG and Reflection
+
+When you click **Analyze the Answer**, your code is sent to the backend along with the question text, the expected solution, and any similar examples retrieved from the local dataset. The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` and feedback. This ranking lets you see exactly how close your answer is to the model solution.
+The same TF‑IDF similarity search used for question generation runs again so the
+LLM receives the most relevant dataset entries as context. These examples guide
+the model when it checks your code, ensuring consistency between question
+generation and grading.
+
 ## Setup Instructions
 
 ### Prerequisites
@@ -101,10 +157,12 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
    ```
    export GOOGLE_API_KEY=your_api_key_here  # On Windows: set GOOGLE_API_KEY=your_api_key_here
    ```
-   
+
    Alternatively, create a `.env` file in the project root:
    ```
    GOOGLE_API_KEY=your_api_key_here
+   # Path to local code instruction dataset (CSV)
+   INSTRUCTION_DATASET_PATH=./data/instructions.csv
    ```
 
 ### Running the Application
@@ -130,6 +188,13 @@ After starting the server, you can access the API documentation at:
 http://localhost:8000/docs
 ```
 
+Key endpoints:
+```
+POST /process-lecture/  - Process a lecture PDF
+POST /analyze-code/     - Analyze code submissions using CoT reflection and compare
+                          them to expected answers from the local dataset
+```
+
 ## Project Structure
 
 - `reflexion_teaching_agent.py`: Core AI agent implementing the Reflexion framework with ReAct and CoT
@@ -149,6 +214,7 @@ http://localhost:8000/docs
 - `create_code_examples()`: Uses the Reflexion graph to generate educational code examples
 - `create_practice_exercises()`: Uses the Reflexion graph to create programming exercises
 - `create_assessment()`: Uses the Reflexion graph to design assessment questions
+- `_get_similar_examples()`: Retrieves dataset examples for RAG question generation
 - `clean_thought_process()`: Post-processes content to create clean versions without thought process
 - `process_lecture()`: Orchestrates the full lecture processing workflow
 

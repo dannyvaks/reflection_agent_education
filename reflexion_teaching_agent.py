@@ -2,6 +2,9 @@ import os
 from typing import List, Dict, Any, Tuple
 import PyPDF2
 import fitz  # PyMuPDF
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # LangGraph for reflection architecture
 from langgraph.graph import MessageGraph, END
@@ -18,8 +21,8 @@ class ReflexionTeachingAgent:
     to enhance educational content generation with structured reasoning.
     """
 
-    def __init__(self, model_name="gemini-2.0-flash", temperature=0.2, google_api_key=None):
-        """Initialize the teaching agent with Google Gemini LLM."""
+    def __init__(self, model_name="gemini-2.0-flash", temperature=0.2, google_api_key=None, dataset_path: str | None = None):
+        """Initialize the teaching agent with Google Gemini LLM and load dataset."""
         if not google_api_key:
             google_api_key = os.environ.get("GOOGLE_API_KEY")
             if not google_api_key:
@@ -37,6 +40,32 @@ class ReflexionTeachingAgent:
 
         # Create the reflexion graph
         self.graph = self._build_reflexion_graph()
+
+        # Load the local instruction dataset for RAG
+        if dataset_path is None:
+            dataset_path = os.environ.get(
+                "INSTRUCTION_DATASET_PATH",
+                os.path.join(os.path.dirname(__file__), "data", "instructions.csv"),
+            )
+
+        self.dataset_connected = False
+        self.dataset = None
+        self.vectorizer = None
+        self.matrix = None
+        if dataset_path and os.path.exists(dataset_path):
+            try:
+                data = pd.read_csv(dataset_path)
+                if {'instruction', 'input', 'output'} <= set(data.columns):
+                    docs = (data['instruction'].fillna('') + ' ' + data['input'].fillna('')).tolist()
+                    self.vectorizer = TfidfVectorizer(max_features=5000)
+                    self.matrix = self.vectorizer.fit_transform(docs)
+                    self.dataset = data
+                    self.dataset_connected = True
+                    print(f"Loaded instruction dataset from {dataset_path} with {len(data)} rows")
+                else:
+                    print("Dataset missing required columns; ignoring")
+            except Exception as e:
+                print(f"Failed to load dataset: {e}")
 
     def _build_reflexion_graph(self) -> MessageGraph:
         """Build the reflexion graph using LangGraph."""
@@ -493,104 +522,114 @@ class ReflexionTeachingAgent:
         return self.create_with_reflexion(practice_prompt, system_prompt)
 
     def create_assessment(self, text: str, language: str) -> Dict[str, Any]:
-        """Generate assessment questions using Chain-of-Thought reasoning."""
-        # Take a sample of the text to avoid token limits
+        """Generate 10 assessment questions using RAG and CoT."""
         text_sample = text[:3000]
 
-        # Create a prompt for assessment questions using CoT
+        # Try to get reference examples from dataset for RAG
+        examples_text = ""
+        selected_examples: List[Dict[str, str]] = []
+        dataset_connected = self.dataset_connected
+        if self.dataset_connected:
+            try:
+                examples = self._get_similar_examples(text_sample, num_examples=5)
+                print("Selected dataset examples for assessment generation:")
+                for idx, ex in enumerate(examples, 1):
+                    print(f"Example {idx}: {ex['instruction'][:80]}")
+                    examples_text += (
+                        f"Instruction: {ex['instruction']}\n"
+                        f"Input: {ex['input']}\n"
+                        f"Output: {ex['output']}\n\n"
+                    )
+                selected_examples = examples
+            except Exception as e:
+                print(f"Example retrieval failed: {e}")
+
         assessment_prompt = f"""
-        Create 5 assessment questions with answers about {language} programming based on this lecture.
+        Create 10 assessment questions with answers about {language} programming based on this lecture.
+        At least 8 questions should require the student to write or analyze code.
+
+        Use the following reference examples to guide style and expected answers:
+        {examples_text}
 
         Use Chain-of-Thought reasoning to:
-        1. First identify the key concepts that should be assessed
-        2. Then formulate questions that test understanding of these concepts
-        3. Finally develop detailed explanations for the answers
+        1. Identify key concepts that should be assessed
+        2. Formulate questions testing these concepts
+        3. Provide detailed explanations for the answers
 
         Lecture excerpt:
         {text_sample}
-
-        Include a mix of:
-        - Conceptual questions that test understanding of key concepts
-        - Code understanding questions where students analyze code snippets
-        - Practical application questions that ask how to solve specific problems
-
-        Make questions specific to the lecture content, not generic programming questions.
 
         Format as:
 
         Question 1: [Question text]
         Answer 1: [Answer text with step-by-step explanation]
 
-        Question 2: [Question text] 
+        Question 2: [Question text]
         Answer 2: [Answer text with step-by-step explanation]
 
-        And so on.
+        And so on up to Question 10.
         """
 
-        # System prompt for assessment questions
         system_prompt = f"""You are creating assessment questions for {language} programming students.
-        Use Chain-of-Thought reasoning to make your answer explanations detailed and step-by-step.
-        Your questions should test understanding of concepts, not just memorization.
-        Include different question types and difficulties, focusing on the key concepts from the lecture.
-        Provide detailed answers that explain not just what the answer is, but why it's correct."""
+        Your questions must mix conceptual understanding with practical coding tasks.
+        Provide clear, step-by-step explanations in the answers."""
 
-        # Use reflexion to generate and improve the assessment questions
         qa_text = self.create_with_reflexion(assessment_prompt, system_prompt)
-
-        # Parse the response into questions and answers
         questions_answers = self._parse_qa(qa_text)
+        questions_answers["dataset_examples"] = selected_examples
+        questions_answers["dataset_connected"] = dataset_connected
         return questions_answers
 
     def _parse_qa(self, qa_text: str) -> Dict[str, Any]:
         """Parse questions and answers text into a structured format."""
-        lines = qa_text.strip().split('\n')
+        import re
+
+        pattern = re.compile(
+            r"Question\s*\d+\s*:(.*?)\n\s*Answer\s*\d+\s*:(.*?)(?=Question\s*\d+\s*:|$)",
+            re.DOTALL | re.IGNORECASE,
+        )
+        matches = pattern.findall(qa_text)
+
         questions = []
         answers = []
+        for q, a in matches:
+            q = q.strip()
+            a = a.strip()
+            if q and a:
+                questions.append(q)
+                answers.append(a)
 
-        current_q = ""
-        current_a = ""
-
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-
-            if line.lower().startswith("question"):
-                # Save previous Q&A if we're starting a new question
-                if current_q and current_a:
-                    questions.append(current_q)
-                    answers.append(current_a)
-
-                # Extract the new question
-                parts = line.split(':', 1)
-                if len(parts) > 1:
-                    current_q = parts[1].strip()
-                else:
-                    current_q = ""
-                current_a = ""
-
-            elif line.lower().startswith("answer"):
-                # Extract the answer
-                parts = line.split(':', 1)
-                if len(parts) > 1:
-                    current_a = parts[1].strip()
-                else:
-                    current_a = ""
-
-        # Add the last Q&A
-        if current_q and current_a:
-            questions.append(current_q)
-            answers.append(current_a)
-
-        # If parsing failed, provide fallback
+        # Fallback if regex failed
         if not questions or not answers:
             questions = ["What is this lecture about?"]
             answers = ["This lecture covers programming concepts and techniques."]
 
+        # Ensure equal length and at most 10 items
+        length = min(len(questions), len(answers), 10)
         return {
-            "questions": questions,
-            "answers": answers
+            "questions": questions[:length],
+            "answers": answers[:length],
         }
+
+    def _get_similar_examples(self, text: str, num_examples: int = 5) -> List[Dict[str, str]]:
+        """Retrieve similar instructions from the loaded dataset using TF-IDF."""
+        if self.dataset is None or self.vectorizer is None or self.matrix is None:
+            return []
+
+        query_vec = self.vectorizer.transform([text])
+        sims = cosine_similarity(query_vec, self.matrix)[0]
+        top_idx = sims.argsort()[-num_examples:][::-1]
+
+        examples = []
+        for idx in top_idx:
+            row = self.dataset.iloc[idx]
+            examples.append({
+                'instruction': str(row.get('instruction', '')),
+                'input': str(row.get('input', '')),
+                'output': str(row.get('output', ''))
+            })
+
+        return examples
 
     def process_lecture(self, pdf_path: str) -> Dict[str, Any]:
         """
@@ -642,7 +681,8 @@ class ReflexionTeachingAgent:
                 "code_examples_clean": code_examples_clean,
                 "practice_exercises": practice_exercises,
                 "practice_exercises_clean": practice_exercises_clean,
-                "assessment": assessment
+                "assessment": assessment,
+                "dataset_connected": assessment.get("dataset_connected", False)
             }
         except Exception as e:
             print(f"Error in process_lecture: {e}")
@@ -657,7 +697,8 @@ class ReflexionTeachingAgent:
                 "assessment": {
                     "questions": ["What topics does this lecture cover?"],
                     "answers": ["The lecture appears to cover programming topics."]
-                }
+                },
+                "dataset_connected": False
             }
 
     def clean_thought_process(self, content: str) -> str:
@@ -746,6 +787,85 @@ class ReflexionTeachingAgent:
             print(f"Error in regex cleaning: {e}")
             return content
 
+
+    def create_code_analysis_prompt(self, user_code: str, exercise_description: str, expected_solution: str | None = None) -> str:
+        """Create a prompt for analyzing user code submissions."""
+        solution_part = f"Reference Solution:\n```\n{expected_solution}\n```" if expected_solution else ""
+        prompt = f"""
+        Analyze the following code submission for a programming exercise and provide detailed feedback:
+
+        Exercise Description:
+        {exercise_description}
+
+        User Submission:
+        ```
+        {user_code}
+        ```
+
+        {solution_part}
+
+        Use your programming expertise to:
+        1. Determine if the solution is correct
+        2. Identify any bugs, errors, or inefficiencies
+        3. Detect conceptual misunderstandings or misconceptions
+        4. Provide specific, constructive feedback
+        5. Suggest hints that guide the student without giving away the complete solution
+
+        Additionally provide your own best attempt at the solution code.
+
+        Return your analysis in JSON with these fields:
+        - is_correct
+        - misconceptions
+        - suggestions
+        - hints
+        - score (0-100 reflecting how correct the solution is)
+        - model_solution (string containing your suggested solution code)
+        """
+        return prompt
+
+    def analyze_code(self, user_code: str, exercise_description: str, expected_solution: str | None = None) -> Dict[str, Any]:
+        """Analyze code using the Reflexion framework."""
+        try:
+            prompt = self.create_code_analysis_prompt(user_code, exercise_description, expected_solution)
+            analysis = self.create_with_reflexion(prompt)
+
+            import json, re
+            try:
+                result = json.loads(analysis)
+            except json.JSONDecodeError:
+                json_match = re.search(r'```json\s*(.*?)\s*```', analysis, re.DOTALL)
+                if json_match:
+                    result = json.loads(json_match.group(1))
+                else:
+                    result = {
+                        "is_correct": "correct" in analysis.lower() and "incorrect" not in analysis.lower(),
+                        "misconceptions": [],
+                        "suggestions": [],
+                        "hints": [],
+                        "score": 0.0,
+                    }
+
+            if "score" not in result:
+                result["score"] = 100.0 if result.get("is_correct") else 0.0
+            else:
+                try:
+                    result["score"] = float(result["score"])
+                except Exception:
+                    result["score"] = 100.0 if result.get("is_correct") else 0.0
+
+            if "model_solution" not in result:
+                result["model_solution"] = ""
+            return result
+        except Exception as e:
+            print(f"Error in code analysis: {e}")
+            return {
+                "is_correct": False,
+                "misconceptions": ["Unable to fully analyze your code"],
+                "suggestions": ["Please review your code for syntax errors"],
+                "hints": ["Check the exercise requirements carefully"],
+                "score": 0.0,
+                "model_solution": "",
+            }
 
 # Test code if run directly
 if __name__ == "__main__":
