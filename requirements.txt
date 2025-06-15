@@ -20,3 +20,8 @@ python-dotenv>=1.0.0  # For environment variables
 # Dataset utilities
 pandas>=1.5.0
 scikit-learn>=1.2.0
+faiss-cpu>=1.7.4  # For vector store
+langchain-community>=0.0.10 # For community vectorstores like FAISS
+
+# Testing
+pytest>=7.0.0

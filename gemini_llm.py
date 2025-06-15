@@ -8,13 +8,7 @@ from langgraph.graph import MessageGraph, END
 # Load environment variables
 load_dotenv()
 
-# Configure Google Generative AI
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY environment variable is not set")
-
-genai.configure(api_key=GOOGLE_API_KEY)
-
+# genai.configure will be called in the GenaiLLM class constructor
 
 class GenaiLLM:
     """
@@ -22,8 +16,18 @@ class GenaiLLM:
     that provides a similar interface to the LangChain ChatOpenAI class.
     """
 
-    def __init__(self, model_name="gemini-2.0-flash", temperature=0.2):
+    def __init__(self, model_name="gemini-2.0-flash", temperature=0.2, google_api_key: str | None = None):
         """Initialize the Gemini model."""
+
+        if google_api_key is None:
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+
+        if not google_api_key:
+            raise ValueError("GOOGLE_API_KEY must be provided either directly or via environment variable and was not found.")
+
+        # Configure Google Generative AI - moved here
+        genai.configure(api_key=google_api_key)
+
         self.model_name = model_name
         self.temperature = temperature
         # Initialize the model with additional configuration to prevent citations
