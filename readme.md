@@ -11,18 +11,15 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 - Creation of practice exercises with solutions
 - Generation of assessment questions and answers
 - 10-question assessments with dataset-based examples (at least 8 with code tasks)
-- Similar questions retrieved by embedding the dataset with TF‑IDF and selecting
-  the top five matches for each lecture
+- Feedback on individual code exercises via `/analyze-code/` (scores 0-100), utilizing the Reflexion pattern.
+- Per-question grading for generated assessments via `/grade-assessment/` (each question scored 0-10 using a direct LLM evaluation).
+- Similar questions retrieved by embedding the dataset with Google's Generative AI Embeddings and using FAISS for similarity search.
 - Toggle button reveals the dataset questions used during RAG along with their
   expected answers so you can see exactly how grading works
 - Web interface with dual view mode (Learning Process and Final Result)
 - API for programmatic integration
-- Automatic code feedback using the Reflexion agent with per-question scores
-  (each question contributes up to 10% toward the overall grade)
 - Friendly **Analyze the Answer** button sends your solution to the `/analyze-code/` endpoint and shows
   how the model would solve the problem
-- The agent uses Chain-of-Thought reflection to compare your code with answers from a local instruction dataset and assigns a score (each question contributes up to 10%)
-- RAG retrieval supplies similar examples from the dataset so the LLM can act as a judge and rank your answer fairly when you press **Analyze the Answer**
 - Friendly visual feedback for code submissions with an overall score summary
 - Model solution shown after you submit your answer so you can compare
 - Button lets you show or hide the expected answer for each question
@@ -33,7 +30,7 @@ This project implements an AI teaching assistant that processes lecture PDFs, ge
 
 ### Reflexion Framework and Architecture
 
-This project implements a Reflexion architecture as described in the paper "Reflexion: Language Agents with Verbal Reinforcement Learning" (Shinn et al., 2023). Our implementation follows a specific pattern:
+This project implements a Reflexion architecture as described in the paper "Reflexion: Language Agents with Verbal Reinforcement Learning" (Shinn et al., 2023). Our implementation follows a specific pattern: This pattern is applied to various content generation tasks within the agent, such as creating summaries, code examples, practice exercises, and assessment questions.
 
 1. **Generation Node with ReAct**: The initial content is generated using the ReAct (Reasoning + Acting) approach, where the model explicitly shows its thinking process and then takes actions based on that reasoning.
 
@@ -92,11 +89,9 @@ This Reflexion architecture combining ReAct and CoT was chosen for several reaso
 Assessment questions are created using Retrieval Augmented Generation (RAG).
 When the application starts, the Kaggle instruction dataset specified by
 `INSTRUCTION_DATASET_PATH` is loaded into memory. The `instruction` and `input`
-columns are embedded with **TF‑IDF** and stored in a matrix so the agent can
-quickly search for relevant examples.
+columns from the dataset are embedded using **Google's Generative AI Embeddings** (specifically, "models/embedding-001"). These embeddings are then stored in a **FAISS (Facebook AI Similarity Search)** index, allowing for efficient and semantically relevant retrieval of examples.
 
-During lecture processing, the agent vectorizes a short excerpt of the PDF and
-computes cosine similarity against the dataset embeddings. The top five matches
+During lecture processing, the agent embeds a short excerpt of the PDF using the same Google Generative AI embedding model and performs a similarity search against the FAISS index. The top five matches
 are retrieved and logged. Each example contains an `instruction`, `input`, and
 `output` field:
 
@@ -119,13 +114,19 @@ Answer 1: ...
 The response also indicates whether the dataset was successfully loaded so the
 frontend can show a connection status.
 
-## Grading with RAG and Reflection
+### Per-Question Assessment Grading (`/grade-assessment/`)
 
-When you click **Analyze the Answer**, your code is sent to the backend along with the question text, the expected solution, and any similar examples retrieved from the local dataset. The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` and feedback. This ranking lets you see exactly how close your answer is to the model solution.
-The same TF‑IDF similarity search used for question generation runs again so the
-LLM receives the most relevant dataset entries as context. These examples guide
-the model when it checks your code, ensuring consistency between question
-generation and grading.
+The assessment questions generated by the system (typically 10 questions) are designed for granular evaluation. A dedicated API endpoint, `/grade-assessment/`, facilitates this.
+
+-   **Functionality**: This endpoint accepts the original question, the student's answer, and the correct answer (as generated by the system during the assessment creation).
+-   **Scoring**: The `ReflexionTeachingAgent` evaluates the student's answer against the correct answer and assigns a score between 0.0 and 10.0 for that specific question.
+-   **Feedback**: Detailed textual feedback is provided alongside the score, explaining the rationale.
+-   **Total Score**: While the API endpoint processes each question individually, a client application can sum these scores to arrive at a total (e.g., out of 100 for a 10-question assessment).
+-   **Mechanism**: This grading uses a direct LLM call configured with a specific prompt to act as an evaluator, comparing the student's submission to the provided correct answer.
+
+### Feedback on Individual Code Exercises (`/analyze-code/`)
+
+When you click **Analyze the Answer**, your code is sent to the backend along with the question text (or exercise description) and the expected solution (if available). The language model acts as a judge: it uses Chain-of-Thought reasoning to compare your code to these references and returns a JSON report with a numeric `score` (0-100) and detailed feedback. This ranking lets you see exactly how close your answer is to the model solution.
 
 ## Setup Instructions
 
@@ -193,6 +194,7 @@ Key endpoints:
 POST /process-lecture/  - Process a lecture PDF
 POST /analyze-code/     - Analyze code submissions using CoT reflection and compare
                           them to expected answers from the local dataset
+POST /grade-assessment/   - Grades a student's answer for a specific assessment question against a correct answer.
 ```
 
 ## Project Structure
@@ -217,11 +219,13 @@ POST /analyze-code/     - Analyze code submissions using CoT reflection and comp
 - `_get_similar_examples()`: Retrieves dataset examples for RAG question generation
 - `clean_thought_process()`: Post-processes content to create clean versions without thought process
 - `process_lecture()`: Orchestrates the full lecture processing workflow
+- `grade_student_answer()`: Grades a student's answer against a correct answer.
 
 ### api.py
 
 - `process_lecture()`: Handles PDF uploads and interfaces with the ReflexionTeachingAgent
 - `health_check()`: API endpoint for monitoring system status
+- `grade_assessment()`: API endpoint for grading a list of student answers.
 
 ## Using Google Gemini
 

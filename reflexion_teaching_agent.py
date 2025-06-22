@@ -3,8 +3,9 @@ from typing import List, Dict, Any, Tuple
 import PyPDF2
 import fitz  # PyMuPDF
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.vectorstores import FAISS # Updated import
+from langchain.docstore.document import Document
 
 # LangGraph for reflection architecture
 from langgraph.graph import MessageGraph, END
@@ -50,22 +51,35 @@ class ReflexionTeachingAgent:
 
         self.dataset_connected = False
         self.dataset = None
-        self.vectorizer = None
-        self.matrix = None
+        self.vector_store = None
         if dataset_path and os.path.exists(dataset_path):
             try:
                 data = pd.read_csv(dataset_path)
                 if {'instruction', 'input', 'output'} <= set(data.columns):
-                    docs = (data['instruction'].fillna('') + ' ' + data['input'].fillna('')).tolist()
-                    self.vectorizer = TfidfVectorizer(max_features=5000)
-                    self.matrix = self.vectorizer.fit_transform(docs)
-                    self.dataset = data
+                    # Create Document objects for FAISS
+                    documents = [
+                        Document(
+                            page_content=f"{row['instruction']} {row['input']}",
+                            metadata={
+                                'instruction': row['instruction'],
+                                'input': row['input'],
+                                'output': row['output']
+                            }
+                        ) for _, row in data.iterrows()
+                    ]
+
+                    # Initialize embeddings model
+                    embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
+
+                    # Create FAISS index
+                    self.vector_store = FAISS.from_documents(documents, embeddings_model)
+                    self.dataset = data  # Keep dataset for now if needed elsewhere, or remove if not
                     self.dataset_connected = True
-                    print(f"Loaded instruction dataset from {dataset_path} with {len(data)} rows")
+                    print(f"Loaded instruction dataset from {dataset_path} with {len(data)} rows and created FAISS index.")
                 else:
                     print("Dataset missing required columns; ignoring")
             except Exception as e:
-                print(f"Failed to load dataset: {e}")
+                print(f"Failed to load dataset or create FAISS index: {e}")
 
     def _build_reflexion_graph(self) -> MessageGraph:
         """Build the reflexion graph using LangGraph."""
@@ -545,34 +559,52 @@ class ReflexionTeachingAgent:
                 print(f"Example retrieval failed: {e}")
 
         assessment_prompt = f"""
-        Create 10 assessment questions with answers about {language} programming based on this lecture.
-        At least 8 questions should require the student to write or analyze code.
+        You are tasked with creating exactly 10 assessment questions with detailed answers about {language} programming, based on the provided lecture content.
+        These questions will be used to assess student understanding, and your provided answers will serve as the definitive correct answers for grading.
+        It is crucial that at least 8 of these 10 questions require the student to write new code, analyze existing code, or debug code.
 
-        Use the following reference examples to guide style and expected answers:
+        Use the following reference examples, if provided, to guide the style and expected detail of your answers:
         {examples_text}
 
-        Use Chain-of-Thought reasoning to:
-        1. Identify key concepts that should be assessed
-        2. Formulate questions testing these concepts
-        3. Provide detailed explanations for the answers
+        Employ Chain-of-Thought reasoning for each question and answer:
+        1. Identify a key concept from the lecture that is critical for assessment.
+        2. Formulate a clear and unambiguous question that tests this concept. Ensure code-based questions are well-defined.
+        3. Develop a comprehensive answer. For code-based questions, this includes the correct code and a step-by-step explanation of how the code works and why it's correct.
+        Ensure each answer is comprehensive and detailed, suitable for use as a grading key.
 
         Lecture excerpt:
         {text_sample}
 
-        Format as:
+        Strictly adhere to the following output format for EACH of the 10 questions:
 
-        Question 1: [Question text]
-        Answer 1: [Answer text with step-by-step explanation]
+        Question X: [Question text]
+        Answer X: [Detailed answer text with step-by-step explanation. If code is part of the answer, it must be in a proper markdown code block with language specified. The explanation should be thorough enough to serve as a grading rubric.]
 
-        Question 2: [Question text]
-        Answer 2: [Answer text with step-by-step explanation]
+        For example:
+        Question 1: Explain the concept of variable scope in {language} and provide a code example illustrating local vs. global scope.
+        Answer 1: Variable scope refers to the visibility and accessibility of a variable within different parts of a program...
+        ``` {language}
+        # Example of global and local scope
+        global_var = "I am global"
 
-        And so on up to Question 10.
+        def my_function():
+            local_var = "I am local"
+            print(global_var) # Accessible
+            print(local_var)  # Accessible
+
+        my_function()
+        # print(local_var) # This would cause an error because local_var is not accessible here
+        ```
+        Explanation: The `global_var` is defined outside any function and is accessible both inside and outside `my_function`. The `local_var` is defined inside `my_function` and is only accessible within that function. Attempting to access `local_var` outside `my_function` would result in a NameError. This distinction is crucial for avoiding naming conflicts and managing data effectively in larger programs.
+
+        Remember to provide exactly 10 questions, with at least 8 involving code analysis or generation.
         """
 
-        system_prompt = f"""You are creating assessment questions for {language} programming students.
-        Your questions must mix conceptual understanding with practical coding tasks.
-        Provide clear, step-by-step explanations in the answers."""
+        system_prompt = f"""You are an expert in creating high-quality assessment materials for {language} programming students.
+        Your questions must rigorously test conceptual understanding and practical coding abilities.
+        The answers you provide must be detailed, correct, and serve as a comprehensive grading rubric.
+        Ensure you generate exactly 10 questions, with a minimum of 8 code-focused questions.
+        Adhere strictly to the specified "Question X:" and "Answer X:" formatting for each item."""
 
         qa_text = self.create_with_reflexion(assessment_prompt, system_prompt)
         questions_answers = self._parse_qa(qa_text)
@@ -612,24 +644,30 @@ class ReflexionTeachingAgent:
         }
 
     def _get_similar_examples(self, text: str, num_examples: int = 5) -> List[Dict[str, str]]:
-        """Retrieve similar instructions from the loaded dataset using TF-IDF."""
-        if self.dataset is None or self.vectorizer is None or self.matrix is None:
+        """Retrieve similar instructions from the loaded dataset using FAISS."""
+        if not self.vector_store:
+            print("Vector store not initialized. Returning empty list for similar examples.")
             return []
 
-        query_vec = self.vectorizer.transform([text])
-        sims = cosine_similarity(query_vec, self.matrix)[0]
-        top_idx = sims.argsort()[-num_examples:][::-1]
+        try:
+            # Use similarity search with the vector store
+            similar_docs = self.vector_store.similarity_search(text, k=num_examples)
 
-        examples = []
-        for idx in top_idx:
-            row = self.dataset.iloc[idx]
-            examples.append({
-                'instruction': str(row.get('instruction', '')),
-                'input': str(row.get('input', '')),
-                'output': str(row.get('output', ''))
-            })
+            examples = []
+            for doc in similar_docs:
+                # Extract metadata which contains the original instruction, input, and output
+                examples.append({
+                    'instruction': doc.metadata.get('instruction', ''),
+                    'input': doc.metadata.get('input', ''),
+                    'output': doc.metadata.get('output', '')
+                })
 
-        return examples
+            if not examples:
+                print("No similar examples found in the vector store.")
+            return examples
+        except Exception as e:
+            print(f"Error during similarity search: {e}")
+            return []
 
     def process_lecture(self, pdf_path: str) -> Dict[str, Any]:
         """
@@ -866,6 +904,106 @@ class ReflexionTeachingAgent:
                 "score": 0.0,
                 "model_solution": "",
             }
+
+    def grade_student_answer(self, question: str, student_answer: str, correct_answer: str) -> Dict[str, Any]:
+        """
+        Grades a student's answer based on a provided correct answer using an LLM.
+
+        Args:
+            question (str): The question that was asked.
+            student_answer (str): The student's answer to the question.
+            correct_answer (str): The definitive correct answer for the question.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing:
+                - score (float): The score from 0.0 to 10.0.
+                - feedback (str): Detailed feedback explaining the score.
+        """
+        import json
+        import re
+
+        grading_prompt = f"""
+        You are an expert programming teaching assistant. Your task is to evaluate a student's answer to a specific question, comparing it against the provided correct answer.
+
+        Question:
+        {question}
+
+        Correct Answer (Rubric):
+        {correct_answer}
+
+        Student's Answer:
+        {student_answer}
+
+        Evaluation Criteria:
+        1.  **Accuracy**: How well does the student's answer match the correct answer?
+        2.  **Completeness**: Does the student's answer cover all key aspects mentioned in the correct answer?
+        3.  **Conceptual Understanding**: Does the student's answer demonstrate a proper understanding of the underlying concepts?
+        4.  **Clarity and Precision**: Is the student's answer clear, concise, and precise?
+        5.  **Code Correctness (if applicable)**: If the answer involves code, is the code syntactically correct and does it achieve the desired outcome as per the correct answer?
+
+        Output Instructions:
+        Provide your evaluation in a JSON format. The JSON object must contain two keys:
+        -   `"score"`: A float value between 0.0 and 10.0 (inclusive), representing the student's performance.
+        -   `"feedback"`: A string containing detailed feedback that explains the reasoning behind the score. This feedback should highlight strengths and weaknesses, and provide constructive suggestions for improvement.
+
+        Example JSON Output:
+        ```json
+        {{
+            "score": 7.5,
+            "feedback": "The student correctly identified the main concept but missed explaining the edge cases mentioned in the correct answer. The code example provided is functional but could be more efficient."
+        }}
+        ```
+
+        Please provide your evaluation now.
+        """
+
+        system_prompt = """You are an AI grading assistant. Your role is to meticulously compare a student's answer against a correct answer/rubric.
+        Provide a numerical score between 0.0 and 10.0 (inclusive) and constructive feedback.
+        Output your response strictly in the specified JSON format: {"score": <float>, "feedback": "<string>"}.
+        Ensure the score is a float. Do not add any text outside the JSON structure."""
+
+        try:
+            response_content = self.llm.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=grading_prompt)
+            ]).content
+
+            # Attempt to parse the JSON from the response
+            # The response might sometimes include markdown ```json ... ```
+            json_match = re.search(r'```json\s*(.*?)\s*```', response_content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                json_str = response_content
+
+            parsed_response = json.loads(json_str)
+            score = parsed_response.get("score")
+            feedback = parsed_response.get("feedback", "No feedback provided.")
+
+            # Validate and clamp score
+            if isinstance(score, (int, float)):
+                score = float(score)
+                if not (0.0 <= score <= 10.0):
+                    score = max(0.0, min(score, 10.0)) # Clamp score
+                    feedback += " (Score was adjusted to be within the 0-10 range.)"
+            else:
+                # If score is invalid or missing, default to 0
+                score = 0.0
+                feedback = f"Invalid or missing score in LLM response. Original response: '{response_content}'. {feedback}"
+                print(f"Invalid score format from LLM. Raw response: {response_content}")
+
+
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON from LLM response: {e}. Raw response: {response_content}")
+            score = 0.0
+            feedback = f"Could not parse the grading response. Raw output: {response_content}"
+        except Exception as e:
+            print(f"An unexpected error occurred during grading: {e}. Raw response: {getattr(self, 'response_content', 'N/A')}")
+            score = 0.0
+            feedback = "An unexpected error occurred while grading the answer."
+
+        return {"score": score, "feedback": feedback}
+
 
 # Test code if run directly
 if __name__ == "__main__":

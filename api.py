@@ -6,7 +6,7 @@ import uvicorn
 import os
 from tempfile import NamedTemporaryFile
 import shutil
-from typing import Dict, Any
+from typing import Dict, Any, List
 from pydantic import BaseModel
 
 from dotenv import load_dotenv
@@ -49,8 +49,28 @@ except ValueError as e:
 
 class CodeAnalysisRequest(BaseModel):
     code: str
-    exercise_id: str
+    exercise_id: str # Could be a description of the exercise
     expected_solution: str | None = None
+
+# Pydantic models for the new grading endpoint
+class StudentAnswerItem(BaseModel):
+    question: str
+    student_answer: str
+    correct_answer: str
+
+class GradeAssessmentRequest(BaseModel):
+    answers: List[StudentAnswerItem]
+
+class GradedAnswerItem(BaseModel):
+    question: str
+    student_answer: str
+    correct_answer: str
+    score: float
+    feedback: str
+
+class GradeAssessmentResponse(BaseModel):
+    graded_answers: List[GradedAnswerItem]
+    total_score: float
 
 
 @app.post("/process-lecture/", response_model=Dict[str, Any])
@@ -107,6 +127,64 @@ async def analyze_code_endpoint(submission: CodeAnalysisRequest):
         raise HTTPException(status_code=500, detail="ReflexionTeachingAgent not initialized")
     feedback = agent.analyze_code(submission.code, submission.exercise_id, submission.expected_solution)
     return feedback
+
+@app.post("/grade-assessment/", response_model=GradeAssessmentResponse)
+async def grade_assessment(request: GradeAssessmentRequest):
+    """
+    Grades a list of student answers against correct answers using the ReflexionTeachingAgent.
+    """
+    if agent is None:
+        raise HTTPException(
+            status_code=500,
+            detail="ReflexionTeachingAgent not initialized. Check if GOOGLE_API_KEY is properly set."
+        )
+
+    graded_answers_list = []
+    total_score = 0.0
+
+    for item in request.answers:
+        try:
+            grading_result = agent.grade_student_answer(
+                question=item.question,
+                student_answer=item.student_answer,
+                correct_answer=item.correct_answer
+            )
+
+            current_score = grading_result.get("score", 0.0)
+            feedback = grading_result.get("feedback", "Error in grading.")
+
+            graded_answers_list.append(
+                GradedAnswerItem(
+                    question=item.question,
+                    student_answer=item.student_answer,
+                    correct_answer=item.correct_answer,
+                    score=current_score,
+                    feedback=feedback
+                )
+            )
+            total_score += current_score
+        except Exception as e:
+            # Handle potential errors during grading of a single item
+            # Log the error and add a placeholder for the failed item
+            print(f"Error grading item: {item.question} - {str(e)}")
+            graded_answers_list.append(
+                GradedAnswerItem(
+                    question=item.question,
+                    student_answer=item.student_answer,
+                    correct_answer=item.correct_answer,
+                    score=0.0,
+                    feedback=f"Failed to grade this answer: {str(e)}"
+                )
+            )
+            # Optionally, decide if you want to add 0 to total_score or handle differently
+
+    # Ensure total_score is capped (though individual scores are 0-10, summing 10 Qs = 100 max)
+    # This is more of a safeguard if number of questions varies or scoring logic changes.
+    # For 10 questions, max is 100. If there are N questions, max is N*10.
+    # For now, let's assume a general cap if needed, or rely on individual caps.
+    # total_score = min(total_score, 100.0) # Example cap if assessment is always out of 100
+
+    return GradeAssessmentResponse(graded_answers=graded_answers_list, total_score=total_score)
 
 
 @app.get("/health/")
