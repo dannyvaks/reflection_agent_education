@@ -56,26 +56,67 @@ class ReflexionTeachingAgent:
             try:
                 data = pd.read_csv(dataset_path)
                 if {'instruction', 'input', 'output'} <= set(data.columns):
-                    # Create Document objects for FAISS
-                    documents = [
-                        Document(
-                            page_content=f"{row['instruction']} {row['input']}",
-                            metadata={
-                                'instruction': row['instruction'],
-                                'input': row['input'],
-                                'output': row['output']
-                            }
-                        ) for _, row in data.iterrows()
-                    ]
-
+                    
                     # Initialize embeddings model
                     embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
+                    
+                    # Define cache directory path
+                    cache_dir = os.path.join(os.path.dirname(dataset_path), "faiss_cache")
+                    cache_exists = os.path.exists(cache_dir) and os.path.exists(os.path.join(cache_dir, "index.faiss"))
+                    
+                    # Check if cache is newer than CSV file
+                    cache_valid = False
+                    if cache_exists:
+                        try:
+                            cache_time = os.path.getmtime(os.path.join(cache_dir, "index.faiss"))
+                            csv_time = os.path.getmtime(dataset_path)
+                            cache_valid = cache_time > csv_time
+                        except OSError:
+                            cache_valid = False
+                    
+                    if cache_valid:
+                        # Load existing FAISS index from cache
+                        print(f"Loading cached FAISS index from {cache_dir}...")
+                        try:
+                            self.vector_store = FAISS.load_local(cache_dir, embeddings_model, allow_dangerous_deserialization=True)
+                            self.dataset = data
+                            self.dataset_connected = True
+                            print(f"Successfully loaded cached FAISS index with {len(data)} rows.")
+                        except Exception as e:
+                            print(f"Failed to load cached index: {e}. Creating new index...")
+                            cache_valid = False
+                    
+                    if not cache_valid:
+                        # Create new FAISS index and cache it
+                        print(f"Creating FAISS index from {len(data)} rows (this may take a while for large datasets)...")
+                        
+                        # Create Document objects for FAISS
+                        documents = [
+                            Document(
+                                page_content=f"{row['instruction']} {row['input']}",
+                                metadata={
+                                    'instruction': row['instruction'],
+                                    'input': row['input'],
+                                    'output': row['output']
+                                }
+                            ) for _, row in data.iterrows()
+                        ]
 
-                    # Create FAISS index
-                    self.vector_store = FAISS.from_documents(documents, embeddings_model)
-                    self.dataset = data  # Keep dataset for now if needed elsewhere, or remove if not
-                    self.dataset_connected = True
-                    print(f"Loaded instruction dataset from {dataset_path} with {len(data)} rows and created FAISS index.")
+                        # Create FAISS index
+                        self.vector_store = FAISS.from_documents(documents, embeddings_model)
+                        self.dataset = data
+                        self.dataset_connected = True
+                        
+                        # Save the index to cache
+                        try:
+                            os.makedirs(cache_dir, exist_ok=True)
+                            self.vector_store.save_local(cache_dir)
+                            print(f"FAISS index created and cached to {cache_dir}")
+                        except Exception as e:
+                            print(f"Warning: Failed to save FAISS cache: {e}")
+                        
+                        print(f"Loaded instruction dataset from {dataset_path} with {len(data)} rows and created FAISS index.")
+                        
                 else:
                     print("Dataset missing required columns; ignoring")
             except Exception as e:
@@ -570,7 +611,7 @@ class ReflexionTeachingAgent:
         1. Identify a key concept from the lecture that is critical for assessment.
         2. Formulate a clear and unambiguous question that tests this concept. Ensure code-based questions are well-defined.
         3. Develop a comprehensive answer. For code-based questions, this includes the correct code and a step-by-step explanation of how the code works and why it's correct.
-        Ensure each answer is comprehensive and detailed, suitable for use as a grading key.
+        Ensure each answer is comprehensive and detailed, suitable for use as a grading rubric.
 
         Lecture excerpt:
         {text_sample}
